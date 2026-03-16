@@ -1,12 +1,12 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "executive-helper"
 version = "0.1.0"
 description = "Dual Phi-3.5-mini system: executive dysfunction coaching + home automation orchestration"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 audio = [
     "faster-whisper>=1.0",
-    "kokoro>=1.0",
+    "kokoro>=0.9",
     "soundfile>=0.12",
     "numpy>=1.26",
     "websockets>=13.0",
@@ -37,7 +37,7 @@ dev = [
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]

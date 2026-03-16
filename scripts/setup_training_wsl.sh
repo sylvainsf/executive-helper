@@ -25,6 +25,12 @@ if ! command -v python3 &>/dev/null; then
 fi
 python3 --version
 
+# ── Install system build deps (needed for llama.cpp / GGUF export) ───────────
+
+echo "Installing system build dependencies..."
+sudo apt-get update -y
+sudo apt-get install -y cmake build-essential git curl libcurl4-openssl-dev python3-dev
+
 # ── Clone/sync project ──────────────────────────────────────────────────────
 
 if [ ! -d ".git" ]; then
@@ -47,7 +53,7 @@ pip install --upgrade pip
 echo ""
 echo "Installing Unsloth (this may take a few minutes)..."
 pip install --no-deps "unsloth[cu124-ampere-torch250] @ git+https://github.com/unslothai/unsloth.git"
-pip install --no-deps trl sft-trainer peft accelerate bitsandbytes
+pip install --no-deps trl peft accelerate bitsandbytes
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 pip install transformers datasets tokenizers sentencepiece protobuf pyyaml
 
@@ -61,7 +67,7 @@ print(f'PyTorch: {torch.__version__}')
 print(f'CUDA available: {torch.cuda.is_available()}')
 if torch.cuda.is_available():
     print(f'GPU: {torch.cuda.get_device_name(0)}')
-    print(f'VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB')
+    print(f'VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB')
 else:
     print('ERROR: CUDA not available!')
     exit(1)
