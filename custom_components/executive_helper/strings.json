@@ -1,0 +1,88 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Executive Helper",
+        "description": "Connect to your Executive Helper backend server.",
+        "data": {
+          "host": "Backend Host",
+          "port": "Backend Port"
+        }
+      },
+      "rooms": {
+        "title": "Add Room Node",
+        "description": "Configure a ReSpeaker Lite microphone node.",
+        "data": {
+          "room_id": "Room ID (e.g., kitchen, bedroom)",
+          "label": "Room Name",
+          "respeaker_ip": "ReSpeaker IP Address",
+          "wake_word": "Wake Word (leave blank for default)",
+          "ha_motion_sensor": "Motion Sensor Entity (optional)",
+          "grace_minutes": "Intent Grace Period (minutes)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Executive Helper Settings",
+        "data": {
+          "wake_word": "Default Wake Word",
+          "tts_voice": "TTS Voice",
+          "tts_speed": "TTS Speed",
+          "whisper_model": "Whisper Model Size"
+        }
+      },
+      "add_room": {
+        "title": "Add Room Node",
+        "data": {
+          "room_id": "Room ID",
+          "label": "Room Name",
+          "respeaker_ip": "ReSpeaker IP Address",
+          "ha_motion_sensor": "Motion Sensor Entity",
+          "grace_minutes": "Grace Period (minutes)"
+        }
+      }
+    }
+  },
+  "device_automation": {},
+  "services": {
+    "request_ef_support": {
+      "name": "Request EF Support",
+      "description": "Request executive function support for the user.",
+      "fields": {
+        "scheduled_task": { "name": "Task", "description": "What the user should be doing", "required": true, "example": "take evening medication" },
+        "urgency": { "name": "Urgency", "description": "low, medium, or high", "required": false, "default": "medium", "example": "high" },
+        "user_state": { "name": "User State", "description": "Current observed state", "required": false, "example": "no activity detected in kitchen" }
+      }
+    },
+    "dismiss_intent": {
+      "name": "Dismiss Intent",
+      "description": "Dismiss a tracked intent (user explicitly changed plans).",
+      "fields": {
+        "intent_id": { "name": "Intent ID", "description": "ID of the intent to dismiss", "required": true },
+        "reason": { "name": "Reason", "description": "Why it's being dismissed", "required": false }
+      }
+    },
+    "enroll_speaker": {
+      "name": "Enroll Speaker",
+      "description": "Start speaker enrollment on a room node.",
+      "fields": {
+        "room_id": { "name": "Room", "description": "Room to use for enrollment", "required": true },
+        "label": { "name": "Speaker Label", "description": "Name for this speaker", "required": true },
+        "role": { "name": "Role", "description": "primary_user, household_member, or guest", "required": true, "default": "household_member" }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "active_intents": { "name": "Active Intents" },
+      "last_intervention": { "name": "Last EF Intervention" },
+      "journal_unrated": { "name": "Unrated Decisions" }
+    },
+    "binary_sensor": {
+      "backend_connected": { "name": "Backend Connected" }
+    }
+  }
+}

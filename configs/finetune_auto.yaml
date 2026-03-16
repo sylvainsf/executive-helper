@@ -1,0 +1,37 @@
+# Fine-tuning config: Home Automation model
+# Base: Phi-3.5-mini-instruct, Method: QLoRA via Unsloth
+# NOTE: Consider using Home LLM's dataset (acon96/Home-Assistant-Requests)
+# as a supplement or replacement for custom-generated data.
+
+model:
+  base: "microsoft/Phi-3.5-mini-instruct"
+  max_seq_length: 2048
+  bf16: false  # set true for Ampere+ GPUs
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+data:
+  path: "data/generated/auto/train.jsonl"
+
+training:
+  batch_size: 2
+  gradient_accumulation: 4
+  epochs: 3
+  learning_rate: 2.0e-4
+  warmup_steps: 10
+  logging_steps: 10
+  save_steps: 100
+
+output:
+  dir: "checkpoints/auto"

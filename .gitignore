@@ -1,0 +1,42 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data artifacts
+data/raw/
+data/processed/
+data/generated/
+
+# Model artifacts
+models/
+checkpoints/
+*.gguf
+*.safetensors
+*.bin
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
