@@ -4,8 +4,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Ollama
     ollama_host: str = "http://localhost:11434"
-    ef_model: str = "phi3.5:3.8b-mini-instruct-q4_K_M"
-    auto_model: str = "phi3.5:3.8b-mini-instruct-q4_K_M"
+    ef_model: str = "executive-helper-ef"
+    auto_model: str = "phi4-mini:latest"
 
     # Gateway
     gateway_host: str = "0.0.0.0"

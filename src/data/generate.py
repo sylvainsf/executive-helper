@@ -232,7 +232,7 @@ def main():
                 seed=args.seed,
             )
             combos = generate_combo_tuples(
-                combos_to_generate=args.count * 2,
+                combos_to_generate=args.count * 10,
                 seed=args.seed,
             )
             examples = singles + combos

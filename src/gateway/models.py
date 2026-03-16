@@ -1,4 +1,4 @@
-"""Ollama client for interacting with both Phi-3.5-mini model instances."""
+"""Ollama client for interacting with both Phi-4-mini model instances."""
 
 from pathlib import Path
 

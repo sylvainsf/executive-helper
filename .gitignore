@@ -38,6 +38,22 @@ logs/
 .env
 .env.local
 
+# Unsloth / HuggingFace caches
+unsloth_compiled_cache/
+.unsloth/
+
+# HuggingFace cache
+.cache/
+
+# llama.cpp build artifacts
+llama.cpp/build/
+
+# Weights & Biases
+wandb/
+
+# Jupyter
+.ipynb_checkpoints/
+
 # OS
 .DS_Store
 Thumbs.db

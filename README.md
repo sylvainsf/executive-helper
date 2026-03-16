@@ -34,7 +34,7 @@ Per-Room Node                              Central Server (GPU)
                                           │  ┌──────┼──────────┐                    │
                                           │  ▼      ▼          ▼                    │
                                           │ Home   EF Model   Intent               │
-                                          │ LLM    (Phi-3.5   Tracker              │
+                                          │ LLM    (Phi-4     Tracker              │
                                           │ (HA)   fine-tuned) (silent timers)     │
                                           │  │      │          │                    │
                                           │  │      │◀─────────┘ (escalate)         │
@@ -77,7 +77,7 @@ Per-Room Node                              Central Server (GPU)
 | **HACS** | Latest | Home Assistant Community Store (for Home LLM) |
 | **Home LLM** | v0.4.6+ | HA integration for local LLM device control |
 | **Ollama** | Latest | Model serving (EF model + optionally Home LLM models) |
-| **Python** | 3.11+ | Executive Helper runtime |
+| **Python** | 3.10+ | Executive Helper runtime |
 | **GPU** | 8GB+ VRAM | Runs EF model + Whisper (or Apple Silicon with unified memory) |
 
 ### Hardware
@@ -119,7 +119,7 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ollama pull hf.co/acon96/Home-Llama-3.2-3B
 
 # Pull the EF base model (we'll fine-tune this later)
-ollama pull phi3.5:3.8b-mini-instruct-q4_K_M
+ollama pull phi4-mini:latest
 
 # Start Ollama listening on all interfaces (for HA to connect)
 # ⚠️  Only do this on your LOCAL network — not on public servers
@@ -420,7 +420,7 @@ Ratings feed back into the fine-tuning data pipeline: helpful decisions become p
 
 | Component | Model | Size | Runs On | Purpose |
 |---|---|---|---|---|
-| Executive Function | Phi-3.5-mini-instruct (fine-tuned) | 3.8B, ~2.5GB Q4 | GPU | Coaching, task decomposition, gentle nudges |
+| Executive Function | Phi-4-mini-instruct (fine-tuned) | 3.8B, ~2.5GB Q4 | GPU | Coaching, task decomposition, gentle nudges |
 | Home Automation | Home-Llama-3.2-3B (via Home LLM) | 3B, ~2GB Q4 | GPU | Device control, routines, HA service calls |
 | Speech-to-Text | Whisper (tiny or base) | 39-74M, ~150MB | CPU | Voice transcription |
 | Speaker ID | ECAPA-TDNN (SpeechBrain) | ~25MB | CPU | Distinguish primary user from others |
@@ -469,6 +469,8 @@ executive-helper/
 │   │   └── app.py                  # Web UI (journal, devices, speakers)
 │   ├── data/
 │   │   ├── generate.py             # Synthetic training data pipeline
+│   │   ├── techniques.py           # 21 evidence-based technique atoms
+│   │   ├── tuple_generator.py      # Template + combo tuple generation
 │   │   └── preview.py              # Data inspection tool
 │   ├── finetune/
 │   │   ├── train.py                # QLoRA fine-tuning via Unsloth
@@ -526,7 +528,7 @@ These services can be called from HA automations, scripts, or the developer tool
 make help               Show all available targets
 make setup              Install core dependencies
 make setup-dev          Install all deps (dev + audio + finetune)
-make pull-models        Pull Phi-3.5-mini via Ollama
+make pull-models        Pull Phi-4-mini via Ollama
 make serve              Start gateway server (foreground)
 make serve-bg           Start gateway server (background)
 make stop               Stop background server
@@ -540,7 +542,11 @@ make preview-data       Preview training data samples
 make finetune-ef        Fine-tune EF model (QLoRA via Unsloth)
 make finetune-auto      Fine-tune automation model
 make eval               Full evaluation suite
-make export             Export fine-tuned models to GGUF
+make export             Merge LoRA → safetensors (via Unsloth)
+make convert-gguf       Convert merged safetensors → GGUF bf16
+make quantize-gguf      Quantize bf16 GGUF → Q4_K_M
+make ollama-load        Load quantized GGUF into Ollama
+make ollama-test        Quick smoke test of the Ollama model
 make lint               Run ruff linter
 make format             Auto-format code
 make clean              Remove build artifacts
@@ -585,12 +591,18 @@ The setup script checks for CUDA, installs the right PyTorch wheels, and verifie
 ### Step 2: Generate Training Data
 
 ```bash
-# Template-based generation (no cloud LLM needed — uses technique atoms)
-python -m src.data.generate --dataset ef --output data/generated/ef --mode template --count 10
+# Combo mode: single-technique examples + multi-technique combos (no cloud LLM needed)
+make gen-data-ef
 
-# Or use our pre-generated dataset (75 examples, all 14 techniques covered)
-# Already at data/generated/ef/train.jsonl
+# Or run directly with custom params:
+python -m src.data.generate --dataset ef --output data/generated/ef --mode combo --count 8 --seed 42
+```
 
+The data pipeline uses 21 evidence-based technique atoms (grounded in SDT, ADAPT, and Brown's EF clusters) combined with diverse user scenarios. Combo mode generates multi-technique responses — e.g., shame spiral interruption + body doubling in a single reply.
+
+Default output: **~850 examples** (250 single-technique + 600 combos), of which ~768 are positive training examples (negatives are filtered during training).
+
+```bash
 # Preview the data
 python -m src.data.preview
 ```
@@ -598,8 +610,8 @@ python -m src.data.preview
 ### Step 3: Fine-Tune
 
 ```bash
-# Run fine-tuning (RTX 4090: ~5-10 minutes for 75 examples)
-python -m src.finetune.train --config configs/finetune_ef.yaml
+# Run fine-tuning (RTX 4090: ~10-15 minutes for 768 examples)
+make finetune-ef
 ```
 
 You'll see:
@@ -608,55 +620,61 @@ You'll see:
 Executive Helper — QLoRA Fine-Tuning
 ============================================================
   Config:     configs/finetune_ef.yaml
-  Base model: microsoft/Phi-3.5-mini-instruct
+  Base model: unsloth/Phi-4-mini-instruct
   Dataset:    data/generated/ef/train.jsonl
   Output:     checkpoints/ef
   LoRA rank:  32
-  Epochs:     5
+  Epochs:     3
   BF16:       True
 
   GPU: NVIDIA GeForce RTX 4090 (24.0 GB VRAM)
 
-Dataset: 75 total → 60 positive examples (filtered 15 negative)
+Dataset: 852 total → 768 positive examples (filtered 84 negative)
 Starting training...
-  Steps per epoch: ~7
-  Total steps: ~37
+  Total steps: ~288
 ```
 
 The LoRA adapter checkpoint is saved to `checkpoints/ef/`.
 
-### Step 4: Export to GGUF
+### Step 4: Export to GGUF and Load into Ollama
+
+The export pipeline has dedicated make targets that chain together:
 
 ```bash
-python -m src.finetune.export --checkpoint checkpoints/ef --name executive-helper-ef
+# Full pipeline: merge → convert → quantize → load into Ollama
+make export          # Merge LoRA weights into safetensors
+make convert-gguf    # Convert safetensors → bf16 GGUF
+make quantize-gguf   # Quantize bf16 → Q4_K_M (~2.2GB)
+make ollama-load     # Register in Ollama
+make ollama-test     # Smoke test
+```
+
+`make ollama-load` depends on `quantize-gguf` which depends on `convert-gguf`, so you can also just run:
+
+```bash
+make export && make ollama-load && make ollama-test
 ```
 
 This produces:
-- `models/executive-helper-ef-unsloth.Q4_K_M.gguf` — the quantized model (~2.5GB)
+- `models/executive-helper-ef.Q4_K_M.gguf` — the quantized model (~2.2GB)
 - `models/Modelfile.executive-helper-ef` — Ollama Modelfile
 
 ### Step 5: Deploy to the Serving Machine
 
-Copy the GGUF and Modelfile to the machine running Ollama (this may be the same machine):
+If training and serving happen on the same machine, `make ollama-load` already handled this. Otherwise, copy the GGUF and Modelfile:
 
 ```bash
 # From the training machine
-scp models/executive-helper-ef*.gguf user@ha-server:~/models/
+scp models/executive-helper-ef.Q4_K_M.gguf user@ha-server:~/models/
 scp models/Modelfile.executive-helper-ef user@ha-server:~/models/
 ```
 
 On the serving machine:
 
 ```bash
-# Create the Ollama model from the GGUF file
 cd ~/models
 ollama create executive-helper-ef -f Modelfile.executive-helper-ef
-
-# Test it
 ollama run executive-helper-ef "I need to clean my apartment but I can't start"
-
-# Verify it's available
-ollama list
 ```
 
 ### Step 6: Configure Executive Helper to Use the Fine-Tuned Model
@@ -666,7 +684,7 @@ Update your `.env` on the serving machine:
 ```bash
 # .env
 EH_EF_MODEL=executive-helper-ef    # ← your fine-tuned model
-EH_AUTO_MODEL=phi3.5:3.8b-mini-instruct-q4_K_M  # automation stays base for now
+EH_AUTO_MODEL=phi4-mini:latest  # automation stays base for now
 ```
 
 Restart the Executive Helper backend:
@@ -702,13 +720,13 @@ The config at `configs/finetune_ef.yaml` (optimized for RTX 4090):
 
 | Parameter | Value | Notes |
 |---|---|---|
-| Base model | `microsoft/Phi-3.5-mini-instruct` | 3.8B params |
+| Base model | `unsloth/Phi-4-mini-instruct` | 3.8B params |
 | LoRA rank | 32 | Higher rank = more expressive |
 | LoRA alpha | 64 | 2× rank |
 | Quantization | 4-bit (QLoRA) | Fits in ~8GB VRAM during training |
 | Batch size | 4 | 4090 can handle this easily |
 | Gradient accumulation | 2 | Effective batch = 8 |
-| Epochs | 5 | More passes for small dataset |
+| Epochs | 3 | 768 examples × 3 = ~288 steps |
 | Learning rate | 2e-4 | Standard QLoRA rate |
 | BF16 | true | Use bfloat16 on Ampere+ GPUs |
 | Export quantization | Q4_K_M | Good quality/size tradeoff for inference |

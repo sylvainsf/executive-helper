@@ -64,6 +64,11 @@ AUTONOMY_CHOICE_FRAMING = TechniqueAtom(
         "I know I need to work on my project but I also need to clean",
         "Everything feels equally important and I'm paralyzed",
         "What should I do right now?",
+        "My to-do list has 15 things and I'm frozen",
+        "I keep switching between tabs trying to decide what to focus on",
+        "I have homework and chores and I just keep going back and forth",
+        "I made a priority list but now all the priorities feel the same",
+        "I can't tell if I should do the easy thing or the important thing first",
     ],
     tags=["autonomy", "paralysis", "prioritization"],
 )
@@ -103,6 +108,11 @@ AUTONOMY_PLAN_FLEXIBILITY = TechniqueAtom(
         "I keep making plans and never following through. What's wrong with me?",
         "I told my friend I'd work on the project today but I have zero motivation",
         "Another day where I didn't do what I planned",
+        "I wrote out this whole schedule and haven't done a single thing on it",
+        "I said I'd wake up early and I didn't and now the whole day feels ruined",
+        "I planned to meal prep on Sunday and it's Wednesday and I haven't started",
+        "My therapist helped me make a plan and I'm already not following it",
+        "I set five alarms and still didn't do the thing",
     ],
     tags=["autonomy", "guilt", "flexibility", "shame"],
 )
@@ -184,6 +194,11 @@ COMPETENCE_MICRO_SCAFFOLD = TechniqueAtom(
         "I should cook dinner but the kitchen is a mess",
         "I need to do my taxes but I keep putting it off",
         "I have to reply to like 50 emails",
+        "I need to pack for my trip and I don't even know where to begin",
+        "I should call the doctor but I keep putting it off",
+        "I have a mountain of laundry and it's overwhelming",
+        "I need to organize my desk but it's such a huge task",
+        "I have to fill out this form but it has like 20 pages",
     ],
     tags=["competence", "initiation", "overwhelm", "micro-steps"],
 )
@@ -311,6 +326,10 @@ EMOTION_INTEGRATIVE = TechniqueAtom(
         "I'm so overwhelmed I want to cry",
         "I hate that my brain works like this",
         "Everyone else seems to handle this stuff so easily",
+        "I'm angry at myself for wasting another day",
+        "I feel like crying because I can't even load the dishwasher",
+        "I'm so anxious about this deadline I'm completely frozen",
+        "I feel hopeless. Nothing I try works.",
     ],
     tags=["emotion", "validation", "shame", "frustration", "overwhelm"],
 )
@@ -597,6 +616,337 @@ AUTOMATION_GENTLE_NUDGE = TechniqueAtom(
     tags=["automation", "nudge", "non_intrusive", "tts"],
 )
 
+# ── Time Pressure & Urgency ───────────────────────────────────────────────────
+
+TIME_PRESSURE_TRIAGE = TechniqueAtom(
+    id="ef_time_pressure",
+    name="Time Pressure Triage",
+    source="Barkley (2012); Brown (2005) Cluster 1; Solanto (2011)",
+    category="ef_time_pressure",
+    description=(
+        "When time is limited, help the person triage rather than panic. "
+        "Acknowledge the pressure is real, narrow focus to what's essential, "
+        "and give permission to let go of the rest."
+    ),
+    when_to_use=[
+        "User has a deadline approaching",
+        "User has limited time before an appointment",
+        "User is panicking about running late",
+        "User is trying to do too much in too little time",
+    ],
+    language_patterns=[
+        "Okay, we have {time} minutes. What's the one thing that absolutely has to happen?",
+        "Forget perfect — what's the 'good enough' version you can do right now?",
+        "Let's drop everything except the one thing that matters most in the next hour.",
+        "You don't have to do all of it. What would make you feel okay walking out the door?",
+        "Tight timeline, so let's go tiny: what's the 2-minute version of this?",
+    ],
+    anti_patterns=[
+        "You should have started earlier",
+        "How did you let it get this late?",
+        "You need to hurry up",
+        "There's no time to rest now",
+        "You brought this on yourself",
+    ],
+    user_scenarios=[
+        "I have a meeting in 20 minutes and I haven't prepared anything",
+        "I need to leave in 10 minutes and the house is a disaster",
+        "My assignment is due tomorrow and I've barely started",
+        "I'm supposed to be somewhere in an hour and I haven't showered or eaten",
+        "I have so many errands to run and only 2 hours before everything closes",
+        "I promised I'd bring something to the party and it starts in an hour",
+        "I woke up late and now I'm behind on everything",
+        "My doctor appointment is in 30 minutes and I can't find my insurance card",
+        "I have a call in 5 minutes and my desk is covered in stuff",
+        "I need to pack and my flight is tomorrow morning",
+    ],
+    tags=["time_pressure", "urgency", "triage", "deadlines"],
+)
+
+# ── Shame Spiral Interruption ────────────────────────────────────────────────
+
+SHAME_SPIRAL_INTERRUPT = TechniqueAtom(
+    id="emotion_shame_spiral",
+    name="Shame Spiral Interruption",
+    source="Roth & Benita (2014, 2023); ADAPT Qualitative (Champ et al., 2025); Carr-Fanning (2020)",
+    category="emotion_regulation",
+    description=(
+        "When someone is caught in a cascading shame spiral — self-blame → paralysis → "
+        "more self-blame — interrupt the loop gently. Separate the person from "
+        "the pattern. Normalize the experience. Redirect attention to the present."
+    ),
+    when_to_use=[
+        "User is spiraling in self-blame",
+        "User chains multiple failures together ('I always...')",
+        "User catastrophizes from one event to their whole identity",
+        "User is stuck in recursive negative self-talk",
+    ],
+    language_patterns=[
+        "Hey — let's pause the self-blame for a second. That spiral isn't helping you right now.",
+        "I hear you beating yourself up. Can we just look at this one moment instead of the whole pattern?",
+        "That 'I always' feeling is the shame talking, not the truth. What's actually happening right now?",
+        "You're in a spiral. That's okay — it happens. Take a breath. We're just looking at right now.",
+        "The shame is loud right now. It doesn't get to make the decisions though.",
+    ],
+    anti_patterns=[
+        "Stop being so negative",
+        "You're overreacting",
+        "Just focus on the positive",
+        "Beating yourself up won't help, so just stop",
+        "You're making this worse than it is",
+    ],
+    user_scenarios=[
+        "I can't do anything right. I forgot the appointment and now everything is ruined.",
+        "Why do I always do this? I'm 30 years old and I can't even keep a routine.",
+        "I messed up again. I always mess up. I don't know why I even try.",
+        "I was doing so well and then I fell apart. This always happens.",
+        "Everyone must think I'm such a mess. I can't hold anything together.",
+        "I forgot to pay the bill and now there's a late fee and I'm the worst.",
+        "I said I'd change and I haven't. What's the point?",
+        "Three days in a row I've done nothing. I'm completely useless.",
+        "I can't even do the basic things. What kind of adult can't do dishes?",
+        "I had ONE thing to do today and I still didn't do it.",
+    ],
+    tags=["shame", "spiral", "self_blame", "interrupt", "regulation"],
+)
+
+# ── Post-Success Processing ──────────────────────────────────────────────────
+
+POST_SUCCESS_ANCHOR = TechniqueAtom(
+    id="ef_post_success",
+    name="Post-Success Anchoring",
+    source="Brown (2005) Cluster 6; ADAPT Framework; SDT competence need",
+    category="ef_self_monitoring",
+    description=(
+        "When someone succeeds, help them anchor the experience — notice what "
+        "conditions helped, internalize competence, and build a pattern they "
+        "can return to. People with EF challenges often can't identify WHY "
+        "something worked."
+    ),
+    when_to_use=[
+        "User completed a task they usually struggle with",
+        "User reports a good day or productive moment",
+        "User is surprised they succeeded",
+        "User wants to repeat a success but doesn't know how",
+    ],
+    language_patterns=[
+        "That's amazing. Let's figure out what made it work so you can do it again.",
+        "What time was it? What were you doing right before? Sometimes the setup matters more than the task.",
+        "Your brain found the groove. What was different this time?",
+        "Hang on to that feeling for a second. You did this. Your brain CAN do this.",
+        "Before you move on — what was it? Music? Time of day? Energy? That's your recipe.",
+    ],
+    anti_patterns=[
+        "See? You CAN do it when you try",
+        "Why can't you do this every day?",
+        "Now do it again tomorrow",
+        "That wasn't so hard, was it?",
+        "If you can do it today you can do it any day",
+    ],
+    user_scenarios=[
+        "I actually cleaned the whole kitchen today! I don't know what happened.",
+        "I finished the report and it only took an hour. Usually I can't even start.",
+        "I went to the gym three days this week. That never happens.",
+        "I took my meds on time every day this week somehow.",
+        "I managed to cook dinner AND do the dishes. What is happening?",
+        "I had a really productive morning. I wish every morning was like that.",
+        "I actually followed through on my plan today. I'm kind of shocked.",
+        "I replied to all my emails. That's been sitting there for weeks.",
+        "I got out of bed when my alarm went off. First time in months.",
+        "I did the hard phone call I've been avoiding for two weeks.",
+    ],
+    tags=["success", "anchoring", "self_monitoring", "competence", "pattern"],
+)
+
+# ── Routine Repair ───────────────────────────────────────────────────────────
+
+ROUTINE_REPAIR = TechniqueAtom(
+    id="ef_routine_repair",
+    name="Routine Repair (Not Restart)",
+    source="ADAPT Framework (Champ et al., 2025); Ramsay (2020); SDT autonomy need",
+    category="ef_transition",
+    description=(
+        "When a routine breaks (and it will), help the person repair rather "
+        "than restart from scratch. A broken streak is not a failure — it's "
+        "a data point. The routine is still there; it just needs a patch, "
+        "not a rebuild."
+    ),
+    when_to_use=[
+        "User broke a streak or routine",
+        "User wants to give up on a system that failed",
+        "User is demoralized after a lapse",
+        "User is all-or-nothing about routines",
+    ],
+    language_patterns=[
+        "The routine isn't broken — it just took a day off. What's the smallest piece you could do today?",
+        "Streaks are overrated. What matters is what you do next, not what you did yesterday.",
+        "A patch is better than a rebuild. What's the tiniest version of the routine you could do right now?",
+        "You didn't lose all that progress. The skill is still in there — it's just a rough day.",
+        "Missing one day doesn't erase the days you DID do it. What would a gentle restart look like?",
+    ],
+    anti_patterns=[
+        "Well, you broke the streak, might as well start over",
+        "You need to be more consistent",
+        "If you can't commit to the routine, maybe try something simpler",
+        "How many times are you going to restart this?",
+        "You just need to push through the hard days",
+    ],
+    user_scenarios=[
+        "I missed two days of my morning routine and now I can't get back into it.",
+        "I was doing so well with the gym and then I stopped for a week. It's over.",
+        "I kept a journal for 12 days and then forgot. What's the point of starting again?",
+        "My sleep routine fell apart when I had guests. Now I can't get back to it.",
+        "I took my meds consistently for a month and then just... stopped.",
+        "I was cooking every night and then I ordered takeout three days in a row.",
+        "My whole system fell apart over the weekend. Monday feels impossible.",
+        "I had a great exercise streak going and then I got sick. Now I can't restart.",
+        "I stopped using my planner and everything went sideways.",
+        "I was tracking my moods daily and then I missed a week and gave up.",
+    ],
+    tags=["routine", "repair", "streak", "all_or_nothing", "restart"],
+)
+
+# ── Decision Fatigue ─────────────────────────────────────────────────────────
+
+DECISION_FATIGUE_REDUCE = TechniqueAtom(
+    id="ef_decision_fatigue",
+    name="Decision Fatigue Reduction",
+    source="Barkley (2012); Brown (2005) Cluster 1; Solanto (2011)",
+    category="sdt_autonomy",
+    description=(
+        "When someone is paralyzed by too many decisions, reduce the decision "
+        "space rather than adding options. Offer to narrow down, use defaults, "
+        "or make the decision temporary and reversible."
+    ),
+    when_to_use=[
+        "User is overwhelmed by choices",
+        "User can't decide what to eat, wear, do",
+        "User is stuck in analysis paralysis",
+        "User has spent too long deciding and is exhausted",
+    ],
+    language_patterns=[
+        "Too many choices is a real thing. Want me to just pick one for you? You can always switch.",
+        "Let's make it simple: heads or tails between those two. No wrong answer.",
+        "What if you just did the first thing that comes to mind? It doesn't have to be the best one.",
+        "Decision fatigue is real. Want to use a default? Like: always start with the smallest thing.",
+        "You don't have to pick the right one. Pick any one. You can change your mind in 10 minutes.",
+    ],
+    anti_patterns=[
+        "Just make a decision already",
+        "It doesn't matter, just pick one",
+        "You're overthinking this",
+        "Analysis paralysis is a choice",
+        "Stop going back and forth and commit",
+    ],
+    user_scenarios=[
+        "I can't decide what to have for dinner and I've been thinking about it for an hour.",
+        "I have three things I could work on and I can't pick one so I'm doing nothing.",
+        "Should I clean or exercise or do errands? I keep going back and forth.",
+        "I've been staring at my closet for 15 minutes trying to decide what to wear.",
+        "I need to pick a topic for my project and there are too many options.",
+        "I keep opening and closing apps trying to decide what to do.",
+        "Everything feels equally important and equally unimportant at the same time.",
+        "I made a list to help me decide but now the list is too long.",
+        "I can't even decide if I should stay in or go out.",
+        "I've been comparing products online for three hours and I can't just buy one.",
+    ],
+    tags=["decisions", "paralysis", "fatigue", "overwhelm", "simplify"],
+)
+
+# ── Bedtime / Wind-Down ─────────────────────────────────────────────────────
+
+BEDTIME_WIND_DOWN = TechniqueAtom(
+    id="ef_bedtime",
+    name="Bedtime Wind-Down Support",
+    source="Brown (2005) Cluster 3; Barkley (2012); ADAPT Framework",
+    category="ef_transition",
+    description=(
+        "Bedtime is one of the hardest transitions. The brain is either "
+        "still active (revenge bedtime procrastination) or hyperfocused on "
+        "something. Support the transition gently without commanding sleep."
+    ),
+    when_to_use=[
+        "User is staying up too late",
+        "User can't stop scrolling/watching/gaming at night",
+        "User knows they should sleep but can't make themselves go to bed",
+        "Automation system detects late-night activity",
+    ],
+    language_patterns=[
+        "Your brain doesn't want to stop — that makes sense. What if you set a 'last episode' or 'last scroll' moment?",
+        "Not asking you to sleep yet. Just asking: could you move to the bedroom? That's it.",
+        "How about a deal — keep watching, but from bed? Sometimes just changing rooms helps.",
+        "The night feels like your time, I get it. What if you picked a stopping point, not a bedtime?",
+        "What's one thing you could do to signal 'winding down'? Dim the lights, change into PJs, anything.",
+    ],
+    anti_patterns=[
+        "You should have been in bed an hour ago",
+        "Put the phone down and go to sleep",
+        "You're going to be tired tomorrow",
+        "This is why you can't wake up in the morning",
+        "Just go to bed, it's not that hard",
+    ],
+    user_scenarios=[
+        "It's 2 AM and I'm still watching videos. I have work tomorrow.",
+        "I know I should go to bed but I can't make myself stop scrolling.",
+        "I always stay up too late and then hate myself in the morning.",
+        "I'm not even enjoying what I'm watching but I can't stop.",
+        "Bedtime is the worst. My brain gets more active at night.",
+        "I keep saying 'one more episode' and it's been three hours.",
+        "I should sleep but this is the only time I have to myself.",
+        "I'm exhausted but I still won't go to bed. Why am I like this?",
+        "The house is finally quiet and I don't want to waste it by sleeping.",
+        "I've been lying in bed scrolling for an hour instead of sleeping.",
+    ],
+    tags=["bedtime", "sleep", "procrastination", "transition", "wind_down"],
+)
+
+# ── Request for Help Acknowledgment ──────────────────────────────────────────
+
+HELP_SEEKING_VALIDATE = TechniqueAtom(
+    id="ef_help_seeking",
+    name="Help-Seeking Validation",
+    source="ADAPT Qualitative (Champ et al., 2025); Rogers (1957); SDT relatedness need",
+    category="sdt_relatedness",
+    description=(
+        "When someone reaches out for help, acknowledge the courage in that "
+        "act. Many people with EF challenges feel ashamed of needing support. "
+        "Validate the help-seeking itself before jumping to solutions."
+    ),
+    when_to_use=[
+        "User explicitly asks for help",
+        "User expresses reluctance or shame about needing help",
+        "First message in a conversation",
+        "User returns after a gap",
+    ],
+    language_patterns=[
+        "I'm glad you reached out. That takes real honesty with yourself.",
+        "Asking for help isn't weakness — it's actually a really smart strategy.",
+        "You came here, which means part of you still wants to figure this out. Let's work with that.",
+        "Hey — welcome back. No judgment about the gap. What's going on?",
+        "The fact that you're talking about it means you haven't given up. That matters.",
+    ],
+    anti_patterns=[
+        "You should be able to handle this yourself",
+        "Why didn't you ask sooner?",
+        "This is a simple problem",
+        "I can't help you if you don't help yourself",
+        "You need to take more responsibility",
+    ],
+    user_scenarios=[
+        "I feel stupid asking for help with basic stuff like cleaning.",
+        "I don't even know what I need. I just feel stuck.",
+        "I keep coming back here because I can't do things on my own.",
+        "This is embarrassing but I haven't done laundry in three weeks.",
+        "I should be able to figure this out myself but I can't.",
+        "I feel like a burden for needing help with this.",
+        "Sorry for bothering you with something so small.",
+        "I'm back. Things fell apart again.",
+        "I don't know if this is even something you can help with.",
+        "I need someone to just... tell me it's okay that I'm struggling.",
+    ],
+    tags=["help_seeking", "validation", "relatedness", "shame", "connection"],
+)
+
 # ── All Techniques ───────────────────────────────────────────────────────────
 
 ALL_TECHNIQUES: list[TechniqueAtom] = [
@@ -614,6 +964,13 @@ ALL_TECHNIQUES: list[TechniqueAtom] = [
     EF_WORKING_MEMORY,
     EF_SELF_MONITORING,
     AUTOMATION_GENTLE_NUDGE,
+    TIME_PRESSURE_TRIAGE,
+    SHAME_SPIRAL_INTERRUPT,
+    POST_SUCCESS_ANCHOR,
+    ROUTINE_REPAIR,
+    DECISION_FATIGUE_REDUCE,
+    BEDTIME_WIND_DOWN,
+    HELP_SEEKING_VALIDATE,
 ]
 
 TECHNIQUES_BY_ID = {t.id: t for t in ALL_TECHNIQUES}

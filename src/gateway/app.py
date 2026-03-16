@@ -1,4 +1,4 @@
-"""FastAPI gateway — routes requests between the two Phi-3.5-mini models."""
+"""FastAPI gateway — routes requests between the two Phi-4-mini models."""
 
 import json
 import logging

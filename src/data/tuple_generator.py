@@ -125,6 +125,21 @@ def generate_combo_tuples(
         ("ef_working_memory", "sdt_competence_micro"),
         ("sdt_autonomy_aic", "emotion_integrative"),
         ("ef_self_monitor", "sdt_competence_celebrate"),
+        # New technique combos
+        ("ef_time_pressure", "sdt_competence_micro"),
+        ("emotion_shame_spiral", "emotion_identity_affirm"),
+        ("emotion_shame_spiral", "sdt_relatedness_body_double"),
+        ("ef_post_success", "ef_self_monitor"),
+        ("ef_routine_repair", "sdt_autonomy_flex"),
+        ("ef_routine_repair", "sdt_competence_celebrate"),
+        ("ef_decision_fatigue", "sdt_autonomy_choice"),
+        ("ef_decision_fatigue", "sdt_competence_micro"),
+        ("ef_bedtime", "ef_transition"),
+        ("ef_bedtime", "ef_sensory"),
+        ("ef_help_seeking", "emotion_integrative"),
+        ("ef_help_seeking", "sdt_relatedness_body_double"),
+        ("ef_time_pressure", "ef_energy"),
+        ("emotion_shame_spiral", "ef_routine_repair"),
     ]
 
     tech_map = {t.id: t for t in techniques}

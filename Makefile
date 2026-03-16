@@ -2,6 +2,7 @@
        test test-ef test-auto test-audio \
        gen-data-ef gen-data-auto preview-data \
        finetune-ef finetune-auto eval export \
+       convert-gguf quantize-gguf ollama-load ollama-test \
        lint format clean
 
 PYTHON ?= python3
@@ -10,7 +11,7 @@ PIP := $(VENV)/bin/pip
 PY := $(VENV)/bin/python
 UVICORN := $(VENV)/bin/uvicorn
 OLLAMA_HOST ?= http://localhost:11434
-MODEL := phi3.5:3.8b-mini-instruct-q4_K_M
+MODEL := phi4-mini:latest
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -34,7 +35,7 @@ setup-audio: $(VENV)/bin/activate ## Install audio dependencies
 	$(PIP) install -e ".[audio]"
 	@echo "\n✓ Audio dependencies installed"
 
-pull-models: ## Pull Phi-3.5-mini and check Ollama is running
+pull-models: ## Pull Phi-4-mini and check Ollama is running
 	@command -v ollama >/dev/null 2>&1 || { echo "Error: ollama not installed. See https://ollama.ai"; exit 1; }
 	ollama pull $(MODEL)
 	@echo "\n✓ Model pulled: $(MODEL)"
@@ -80,17 +81,44 @@ preview-data: ## Preview generated training data samples
 
 # ── Fine-Tuning ──────────────────────────────────────────────────────────────
 
-finetune-ef: setup-dev ## Fine-tune Phi-3.5-mini for executive dysfunction support
+finetune-ef: setup-dev ## Fine-tune Phi-4-mini for executive dysfunction support
 	$(PY) -m src.finetune.train --config configs/finetune_ef.yaml
 
-finetune-auto: setup-dev ## Fine-tune Phi-3.5-mini for home automation
+finetune-auto: setup-dev ## Fine-tune Phi-4-mini for home automation
 	$(PY) -m src.finetune.train --config configs/finetune_auto.yaml
 
 eval: setup-dev ## Run evaluation suite (baseline vs fine-tuned)
 	$(PY) -m src.eval.run --compare
 
-export: ## Export fine-tuned models to GGUF Q4_K_M for Ollama
+export: ## Merge LoRA adapters → safetensors (models/executive-helper-ef/)
 	$(PY) -m src.finetune.export
+
+convert-gguf: export ## Convert merged safetensors → GGUF bf16
+	@echo "Patching config.json: Unsloth may remap Phi→Llama internally, fix it back..."
+	$(PY) -c "import json, pathlib; \
+		p = pathlib.Path('models/executive-helper-ef/config.json'); \
+		c = json.loads(p.read_text()); \
+		arch = c.get('architectures', [''])[0]; \
+		if 'Llama' in arch: \
+			print(f'  Fixing {arch} → Phi3ForCausalLM'); \
+			c['architectures'] = ['Phi3ForCausalLM']; \
+			c['model_type'] = 'phi3'; \
+			p.write_text(json.dumps(c, indent=2)); \
+		else: \
+			print(f'  Architecture OK: {arch}')"
+	$(PY) llama.cpp/convert_hf_to_gguf.py models/executive-helper-ef \
+		--outfile models/executive-helper-ef.bf16.gguf --outtype bf16
+
+quantize-gguf: convert-gguf ## Quantize bf16 GGUF → Q4_K_M
+	llama.cpp/llama-quantize \
+		models/executive-helper-ef.bf16.gguf \
+		models/executive-helper-ef.Q4_K_M.gguf Q4_K_M
+
+ollama-load: quantize-gguf ## Load quantized GGUF into Ollama
+	cd models && ollama create executive-helper-ef -f Modelfile.executive-helper-ef
+
+ollama-test: ## Quick smoke test of the Ollama model
+	ollama run executive-helper-ef "I need to clean my apartment but I can't start."
 
 # ── Code Quality ─────────────────────────────────────────────────────────────
 
