@@ -60,6 +60,7 @@ Per-Room Node                              Central Server (GPU)
 4. Router decides:
    ├─ Wake word + primary user → Home LLM (voice command)
    ├─ Wake word + unknown speaker → safety check, refuse sensitive commands
+   ├─ Active EF session in room → continue multi-turn EF conversation
    ├─ Ambient speech with task intent → silent intent tracker (no response)
    ├─ Conversation detected → analysis for routine/context tracking
    └─ Ambient, no intent → ignore
@@ -512,7 +513,47 @@ When the EF model sets a timer or reminder, the pipeline:
 4. The gateway loads the stored context and asks the EF model for a contextual follow-up
 5. The follow-up is spoken through the room's speaker via TTS
 
-This means reminders survive server restarts and carry full conversation context.
+This means reminders survive server restarts and carry full conversation context. The callback prompt includes:
+- What the user originally said
+- What the EF model told them (the spoken response)
+- The reminder label and action type
+
+This lets the model generate coherent follow-ups like *"Earlier I suggested grabbing a trash bag and doing one lap. How'd it go?"*
+
+### Multi-Turn EF Sessions
+
+Not every EF interaction is a single exchange. The pipeline supports **multi-turn conversations** where the EF model and user go back and forth before an action is taken.
+
+**How it works:**
+
+1. Auto model escalates to EF → pipeline starts an `EFSession` (room-scoped, one per room)
+2. If the EF model's first response includes an action (directive + timer), it executes immediately and the session closes
+3. If the first response is a question or offer (no action JSON), the session stays open
+4. The next utterance in that room — regardless of wake word — routes directly to the EF model with full conversation history
+5. When the model finally emits an action, it executes and the session closes
+
+**Example flow:**
+```
+User: "I can't get anything done today"
+EF (turn 1): "What's the thing? Name it and I'll help you chop it up."  ← no action, session open
+User: "Laundry, dishes, and I need to eat"
+EF (turn 2): "Eat first — wash one plate and one fork. The rest waits."  ← + set_timer, session closes
+```
+
+**Session lifecycle:**
+- **Timeout**: 5 minutes of silence → auto-close
+- **Close keywords**: "thanks", "nevermind", "I'm good" → graceful close
+- **Turn limit**: 6 user turns max → closes with encouragement
+- **Ambient suppression**: while a session is active, all speech in that room routes to EF (no wake word needed)
+
+### Permission Rule: Music & Lights
+
+`play_music`, `brighten_lights`, and `dim_lights` physically change someone's environment. The system prompt and training data enforce a strict rule: **these actions NEVER fire without explicit permission.**
+
+- Turn 1: *"Want me to put on some music?"* (no action JSON)
+- Turn 2 (after user says yes): *"Music's on. Grab the first dish."* + `play_music`
+
+Timers, reminders, check-ins, and dismiss are fine single-turn — they don't change the room immediately.
 
 ## Project Structure
 
@@ -545,7 +586,7 @@ executive-helper/
 │   │   ├── streaming.py            # Audio stream manager + VAD
 │   │   ├── transcription.py        # Whisper ASR + speaker diarization
 │   │   ├── tts.py                  # Kokoro TTS engine
-│   │   ├── pipeline.py             # End-to-end audio orchestration
+│   │   ├── pipeline.py             # End-to-end audio orchestration + EF session manager
 │   │   ├── websocket_server.py     # WebSocket server for room nodes
 │   │   ├── intent_tracker.py       # Silent intent monitoring + escalation
 │   │   └── ha_monitor.py           # HA entity state checker
