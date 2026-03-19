@@ -28,7 +28,8 @@ finetune = [
     "unsloth[colab-new]>=2024.8",
     "datasets>=2.19",
     "trl>=0.9",
-    "transformers>=4.40",
+    "transformers>=4.57.3,<=5.2.0",
+    "peft>=0.12",
 ]
 dev = [
     "pytest>=8.0",

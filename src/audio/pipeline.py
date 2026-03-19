@@ -124,8 +124,17 @@ class AudioPipeline:
         # Check for EF escalation in the response
         ef_response = await self._check_ef_escalation(response)
 
+        # Parse and execute any EF actions
+        if ef_response:
+            ef_actions = self._extract_ef_actions(ef_response)
+            if ef_actions:
+                await self._execute_ef_actions(ef_actions, room, user_input=command_text)
+
         # Determine what to speak back
-        spoken = ef_response or self._extract_spoken_text(response)
+        spoken = (
+            self._extract_spoken_text(ef_response) if ef_response
+            else self._extract_spoken_text(response)
+        )
         if spoken:
             await self._speak(room, spoken)
 
@@ -158,9 +167,18 @@ class AudioPipeline:
 
         ef_response = await self._check_ef_escalation(response)
 
+        # Parse and execute any EF actions
+        if ef_response:
+            ef_actions = self._extract_ef_actions(ef_response)
+            if ef_actions:
+                await self._execute_ef_actions(ef_actions, room, user_input=transcript)
+
         # Conversations don't always need a spoken response —
         # only speak if the model explicitly generates user-facing text
-        spoken = ef_response or self._extract_spoken_text(response)
+        spoken = (
+            self._extract_spoken_text(ef_response) if ef_response
+            else self._extract_spoken_text(response)
+        )
         if spoken:
             await self._speak(room, spoken)
 
@@ -215,7 +233,12 @@ class AudioPipeline:
         # Ambient analysis should almost never produce a spoken response —
         # only if the model detects something urgent (e.g., safety concern)
         if ef_response:
-            await self._speak(room, ef_response)
+            ef_actions = self._extract_ef_actions(ef_response)
+            if ef_actions:
+                await self._execute_ef_actions(ef_actions, room, user_input=text)
+            spoken = self._extract_spoken_text(ef_response)
+            if spoken:
+                await self._speak(room, spoken)
 
         await self._log_decision(
             room=room,
@@ -272,6 +295,150 @@ class AudioPipeline:
         text = " ".join(spoken_lines).strip()
         return text if text else None
 
+    def _extract_ef_actions(self, response: str) -> list[dict]:
+        """Extract system action JSON blocks from an EF model response.
+
+        The EF model may append action JSON after spoken text, e.g.:
+            Grab a trash bag and do one lap.
+            {"action": "set_timer", "minutes": 10, "label": "cleanup"}
+
+        Returns a list of parsed action dicts.
+        """
+        actions = []
+        for line in response.strip().split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("{"):
+                try:
+                    parsed = json.loads(stripped)
+                    if "action" in parsed:
+                        actions.append(parsed)
+                except json.JSONDecodeError:
+                    pass
+        return actions
+
+    async def _execute_ef_actions(
+        self,
+        actions: list[dict],
+        room: str,
+        user_input: str = "",
+    ) -> None:
+        """Execute system actions returned by the EF model.
+
+        Actions that need callbacks (reminders, body-double check-ins) are
+        implemented via HA timer entities. The conversation context is stored
+        in the journal DB. When the timer fires, HA calls the gateway's
+        /ef-reminder-callback endpoint, which loads the context and asks the
+        EF model for a contextual follow-up.
+
+        Supported actions:
+          - set_timer: Start a countdown timer via HA
+          - set_reminder: Schedule a contextual follow-up via HA timer + DB
+          - play_music: Start media in the room
+          - brighten_lights / dim_lights: Adjust room lighting
+          - body_double_checkin: Schedule a contextual check-in via HA timer + DB
+          - dismiss_intent: Stop tracking the current task intent
+        """
+        from src.journal.store import create_reminder
+
+        for action in actions:
+            action_type = action.get("action")
+            try:
+                if action_type == "set_timer":
+                    minutes = action.get("minutes", 5)
+                    label = action.get("label", "timer")
+                    timer_entity = f"timer.eh_{room}_timer"
+                    await self.ha_monitor.call_service(
+                        "timer", "start",
+                        entity_id=timer_entity,
+                        data={"duration": f"00:{minutes:02d}:00"},
+                    )
+                    logger.info("Set timer: %dm (%s) in %s", minutes, label, room)
+
+                elif action_type == "set_reminder":
+                    minutes = action.get("minutes", 15)
+                    label = action.get("label", "reminder")
+                    timer_entity = f"timer.eh_{room}_reminder"
+
+                    # Store context so the callback can reconstruct the conversation
+                    reminder_id = await create_reminder(
+                        room=room,
+                        label=label,
+                        minutes=minutes,
+                        action_type="reminder",
+                        original_user_input=user_input,
+                        timer_entity_id=timer_entity,
+                    )
+
+                    await self.ha_monitor.call_service(
+                        "timer", "start",
+                        entity_id=timer_entity,
+                        data={"duration": f"00:{minutes:02d}:00"},
+                    )
+                    logger.info(
+                        "Set reminder #%d: %dm (%s) in %s",
+                        reminder_id, minutes, label, room,
+                    )
+
+                elif action_type == "play_music":
+                    await self.ha_monitor.call_service(
+                        "media_player", "play_media",
+                        entity_id=f"media_player.{room}",
+                        data={"media_content_type": "music", "media_content_id": ""},
+                    )
+                    logger.info("Play music in %s", room)
+
+                elif action_type == "brighten_lights":
+                    await self.ha_monitor.call_service(
+                        "light", "turn_on",
+                        entity_id=f"light.{room}",
+                        data={"brightness": 255},
+                    )
+                    logger.info("Brighten lights in %s", room)
+
+                elif action_type == "dim_lights":
+                    await self.ha_monitor.call_service(
+                        "light", "turn_on",
+                        entity_id=f"light.{room}",
+                        data={"brightness": 50},
+                    )
+                    logger.info("Dim lights in %s", room)
+
+                elif action_type == "body_double_checkin":
+                    minutes = action.get("minutes", 10)
+                    timer_entity = f"timer.eh_{room}_checkin"
+
+                    # Store context for the check-in callback
+                    reminder_id = await create_reminder(
+                        room=room,
+                        label="body_double_checkin",
+                        minutes=minutes,
+                        action_type="body_double_checkin",
+                        original_user_input=user_input,
+                        timer_entity_id=timer_entity,
+                    )
+
+                    await self.ha_monitor.call_service(
+                        "timer", "start",
+                        entity_id=timer_entity,
+                        data={"duration": f"00:{minutes:02d}:00"},
+                    )
+                    logger.info(
+                        "Body-double check-in #%d: %dm in %s",
+                        reminder_id, minutes, room,
+                    )
+
+                elif action_type == "dismiss_intent":
+                    active = self.intent_tracker.get_active()
+                    if active:
+                        self.intent_tracker.dismiss(active[-1].id, reason="EF model dismissed")
+                        logger.info("Dismissed latest active intent")
+
+                else:
+                    logger.warning("Unknown EF action type: %s", action_type)
+
+            except Exception as e:
+                logger.warning("Failed to execute EF action %s: %s", action_type, e)
+
     async def _speak(self, room: str, text: str) -> None:
         """Synthesize speech and send to room node."""
         logger.info("Speaking in %s: %s", room, text[:100])
@@ -326,7 +493,17 @@ class AudioPipeline:
         if ef_response:
             # Speak in the room where the user currently is (or was last detected)
             target_room = intent.room_detected
-            await self._speak(target_room, ef_response)
+
+            # Parse and execute any actions from the EF model
+            ef_actions = self._extract_ef_actions(ef_response)
+            if ef_actions:
+                await self._execute_ef_actions(
+                    ef_actions, target_room, user_input=intent.transcript,
+                )
+
+            spoken = self._extract_spoken_text(ef_response)
+            if spoken:
+                await self._speak(target_room, spoken)
 
         await self._log_decision(
             room=intent.room_detected,

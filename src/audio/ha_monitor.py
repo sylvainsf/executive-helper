@@ -43,6 +43,44 @@ class HAActivityMonitor:
             logger.warning("Failed to get state for %s: %s", entity_id, e)
             return None
 
+    async def call_service(
+        self,
+        domain: str,
+        service: str,
+        entity_id: str = "",
+        data: dict | None = None,
+    ) -> bool:
+        """Call a Home Assistant service.
+
+        Used by the EF model pipeline to execute actions like
+        setting timers, playing music, or adjusting lights.
+        """
+        if not self.ha_token:
+            logger.debug("No HA token configured — skipping service call")
+            return False
+
+        payload: dict = {}
+        if entity_id:
+            payload["entity_id"] = entity_id
+        if data:
+            payload.update(data)
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"{self.ha_url}/api/services/{domain}/{service}",
+                    headers=self._headers,
+                    json=payload,
+                )
+                resp.raise_for_status()
+                logger.info("HA service called: %s.%s on %s", domain, service, entity_id)
+                return True
+        except httpx.HTTPError as e:
+            logger.warning(
+                "Failed to call %s.%s on %s: %s", domain, service, entity_id, e
+            )
+            return False
+
     async def check_room_activity(self, room: str, since_minutes: int = 5) -> bool:
         """Check if there's been recent activity in a room.
 

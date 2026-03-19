@@ -1,2 +1,13 @@
-# Force shell scripts to LF so they work in WSL/Linux
+# Normalize all text files to LF (project runs in WSL)
+* text=auto eol=lf
+
+# Ensure these are always LF regardless of OS
 *.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+Makefile text eol=lf

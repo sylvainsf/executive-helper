@@ -95,3 +95,19 @@ class EHCoordinator(DataUpdateCoordinator):
                 f"{self._base_url}/api/speakers/enroll",
                 json={"room_id": room_id, "label": label, "role": role},
             )
+
+    async def fire_reminder_callback(self, timer_entity_id: str):
+        """Notify the backend that an EF timer has fired.
+
+        The backend looks up the stored context for this timer and asks
+        the EF model for a contextual follow-up message.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{self._base_url}/ef-reminder-callback",
+                    json={"timer_entity_id": timer_entity_id},
+                )
+                resp.raise_for_status()
+        except httpx.HTTPError as err:
+            _LOGGER.warning("Reminder callback failed for %s: %s", timer_entity_id, err)

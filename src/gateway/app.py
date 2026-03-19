@@ -97,6 +97,59 @@ async def ef_support_endpoint(req: EFSupportRequest):
     return ChatResponse(response=response, model="ef")
 
 
+class ReminderCallbackRequest(BaseModel):
+    """Fired by HA automation when a timer entity finishes."""
+    timer_entity_id: str = Field(..., min_length=1)
+
+
+@app.post("/ef-reminder-callback", response_model=ChatResponse)
+async def ef_reminder_callback(req: ReminderCallbackRequest):
+    """Callback endpoint for HA timer-fired reminders and check-ins.
+
+    Flow:
+    1. EF model response included a set_reminder or body_double_checkin action
+    2. Pipeline stored context in journal DB + started a HA timer
+    3. HA timer fires → HA automation calls this endpoint
+    4. We look up the stored context and ask the EF model for a follow-up
+    5. Response is spoken via TTS in the original room
+    """
+    from src.journal.store import get_pending_reminder_by_timer, complete_reminder
+
+    reminder = get_pending_reminder_by_timer(req.timer_entity_id)
+    if not reminder:
+        raise HTTPException(status_code=404, detail="No pending reminder for this timer")
+
+    # Build a contextual prompt for the EF model
+    action_type = reminder["action_type"]
+    original_input = reminder.get("original_user_input", "")
+    label = reminder["label"]
+    room = reminder["room"]
+
+    if action_type == "body_double_checkin":
+        prompt = (
+            f"You set a check-in timer for the user. They were working on: {original_input}\n"
+            f"Check in on them — are they still going? Be warm and brief."
+        )
+    else:
+        prompt = (
+            f"You set a reminder for the user about: {label}\n"
+            f"The original context was: {original_input}\n"
+            f"Deliver this reminder naturally — be warm, action-oriented, and brief."
+        )
+
+    try:
+        response = await chat("ef", [{"role": "user", "content": prompt}], temperature=0.8)
+    except Exception as e:
+        logger.error("EF reminder callback failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"EF model unavailable: {e}")
+
+    # Mark reminder as completed
+    complete_reminder(reminder["id"])
+    logger.info("Reminder #%d fired in %s: %s", reminder["id"], room, response[:100])
+
+    return ChatResponse(response=response, model="ef")
+
+
 @app.post("/transcription", response_model=ChatResponse)
 async def transcription_endpoint(req: TranscriptionRequest):
     """Process a voice transcription through the automation model.

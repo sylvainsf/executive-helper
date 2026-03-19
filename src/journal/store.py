@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _DB_PATH = Path("data/journal.db")
@@ -38,9 +38,23 @@ def _init_schema(conn: sqlite3.Connection):
             exported INTEGER NOT NULL DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS pending_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            fire_at TEXT NOT NULL,
+            room TEXT NOT NULL DEFAULT 'unknown',
+            label TEXT NOT NULL,
+            action_type TEXT NOT NULL DEFAULT 'reminder',
+            conversation_context TEXT,
+            original_user_input TEXT,
+            timer_entity_id TEXT,
+            status TEXT NOT NULL DEFAULT 'pending'
+        );
+
         CREATE INDEX IF NOT EXISTS idx_decisions_timestamp ON decisions(timestamp);
         CREATE INDEX IF NOT EXISTS idx_decisions_model ON decisions(model);
         CREATE INDEX IF NOT EXISTS idx_decisions_trigger ON decisions(trigger);
+        CREATE INDEX IF NOT EXISTS idx_reminders_status ON pending_reminders(status);
     """)
 
 
@@ -226,3 +240,73 @@ def get_stats() -> dict:
         "by_model": by_model,
         "by_trigger": by_trigger,
     }
+
+
+# ── Pending Reminders ────────────────────────────────────────────────────────
+
+
+async def create_reminder(
+    room: str,
+    label: str,
+    minutes: int,
+    action_type: str = "reminder",
+    conversation_context: str = "",
+    original_user_input: str = "",
+    timer_entity_id: str = "",
+) -> int:
+    """Store a pending reminder with its conversation context.
+
+    When the HA timer fires, the callback endpoint looks up this reminder
+    to reconstruct context for the EF model.
+    """
+    conn = _get_conn()
+    now = datetime.now(timezone.utc)
+    fire_at = now + timedelta(minutes=minutes)
+    cursor = conn.execute(
+        """INSERT INTO pending_reminders
+           (created_at, fire_at, room, label, action_type,
+            conversation_context, original_user_input, timer_entity_id, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+        (
+            now.isoformat(),
+            fire_at.isoformat(),
+            room,
+            label,
+            action_type,
+            conversation_context,
+            original_user_input,
+            timer_entity_id,
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_pending_reminder(reminder_id: int) -> dict | None:
+    """Retrieve a pending reminder by ID."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT * FROM pending_reminders WHERE id = ? AND status = 'pending'",
+        (reminder_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def complete_reminder(reminder_id: int):
+    """Mark a reminder as completed (fired)."""
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE pending_reminders SET status = 'completed' WHERE id = ?",
+        (reminder_id,),
+    )
+    conn.commit()
+
+
+def get_pending_reminder_by_timer(timer_entity_id: str) -> dict | None:
+    """Look up a pending reminder by its HA timer entity ID."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT * FROM pending_reminders WHERE timer_entity_id = ? AND status = 'pending'",
+        (timer_entity_id,),
+    ).fetchone()
+    return dict(row) if row else None

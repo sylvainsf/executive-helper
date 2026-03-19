@@ -1,7 +1,7 @@
 .PHONY: help setup setup-dev pull-models serve serve-bg stop \
        test test-ef test-auto test-audio \
        gen-data-ef gen-data-auto preview-data \
-       finetune-ef finetune-auto eval export \
+       finetune-ef finetune-auto eval export validate-export \
        convert-gguf quantize-gguf ollama-load ollama-test \
        lint format clean
 
@@ -71,7 +71,7 @@ test-audio: setup-audio ## Test audio round-trip (mic → transcription → resp
 # ── Data Generation ─────────────────────────────────────────────────────────
 
 gen-data-ef: setup ## Generate synthetic executive dysfunction training data
-	$(PY) -m src.data.generate --dataset ef --output data/generated/ef
+	$(PY) -m src.data.generate --dataset ef --output data/generated/ef --mode combo --count 10 --seed 42
 
 gen-data-auto: setup ## Generate synthetic home automation training data
 	$(PY) -m src.data.generate --dataset auto --output data/generated/auto
@@ -82,10 +82,12 @@ preview-data: ## Preview generated training data samples
 # ── Fine-Tuning ──────────────────────────────────────────────────────────────
 
 finetune-ef: setup-dev ## Fine-tune Phi-4-mini for executive dysfunction support
-	$(PY) -m src.finetune.train --config configs/finetune_ef.yaml
+	@rm -rf unsloth_compiled_cache
+	TORCHDYNAMO_DISABLE=1 $(PY) -m src.finetune.train --config configs/finetune_ef.yaml
 
 finetune-auto: setup-dev ## Fine-tune Phi-4-mini for home automation
-	$(PY) -m src.finetune.train --config configs/finetune_auto.yaml
+	@rm -rf unsloth_compiled_cache
+	TORCHDYNAMO_DISABLE=1 $(PY) -m src.finetune.train --config configs/finetune_auto.yaml
 
 eval: setup-dev ## Run evaluation suite (baseline vs fine-tuned)
 	$(PY) -m src.eval.run --compare
@@ -93,29 +95,29 @@ eval: setup-dev ## Run evaluation suite (baseline vs fine-tuned)
 export: ## Merge LoRA adapters → safetensors (models/executive-helper-ef/)
 	$(PY) -m src.finetune.export
 
-convert-gguf: export ## Convert merged safetensors → GGUF bf16
-	@echo "Patching config.json: Unsloth may remap Phi→Llama internally, fix it back..."
-	$(PY) -c "import json, pathlib; \
-		p = pathlib.Path('models/executive-helper-ef/config.json'); \
-		c = json.loads(p.read_text()); \
-		arch = c.get('architectures', [''])[0]; \
-		if 'Llama' in arch: \
-			print(f'  Fixing {arch} → Phi3ForCausalLM'); \
-			c['architectures'] = ['Phi3ForCausalLM']; \
-			c['model_type'] = 'phi3'; \
-			p.write_text(json.dumps(c, indent=2)); \
-		else: \
-			print(f'  Architecture OK: {arch}')"
+validate-export: ## Validate exported model dir before GGUF conversion
+	$(PY) scripts/validate_export.py models/executive-helper-ef
+
+convert-gguf: ## Convert merged safetensors → GGUF bf16
 	$(PY) llama.cpp/convert_hf_to_gguf.py models/executive-helper-ef \
 		--outfile models/executive-helper-ef.bf16.gguf --outtype bf16
+	@echo ""
+	@echo "✓ GGUF bf16 written to models/executive-helper-ef.bf16.gguf"
+	@echo "  Next: make quantize-gguf"
 
-quantize-gguf: convert-gguf ## Quantize bf16 GGUF → Q4_K_M
+quantize-gguf: ## Quantize bf16 GGUF → Q4_K_M
 	llama.cpp/llama-quantize \
 		models/executive-helper-ef.bf16.gguf \
 		models/executive-helper-ef.Q4_K_M.gguf Q4_K_M
+	@echo ""
+	@echo "✓ Quantized to models/executive-helper-ef.Q4_K_M.gguf"
+	@echo "  Next: make ollama-load"
 
-ollama-load: quantize-gguf ## Load quantized GGUF into Ollama
+ollama-load: ## Load quantized GGUF into Ollama
 	cd models && ollama create executive-helper-ef -f Modelfile.executive-helper-ef
+	@echo ""
+	@echo "✓ Model loaded into Ollama as executive-helper-ef"
+	@echo "  Next: make ollama-test"
 
 ollama-test: ## Quick smoke test of the Ollama model
 	ollama run executive-helper-ef "I need to clean my apartment but I can't start."

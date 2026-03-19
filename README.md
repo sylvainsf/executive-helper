@@ -428,6 +428,92 @@ Ratings feed back into the fine-tuning data pipeline: helpful decisions become p
 
 **Total VRAM**: ~4.5GB with EF + Whisper loaded. Home LLM runs via Ollama and shares the GPU. Fits on 8GB with headroom.
 
+## Training Data
+
+The EF model is trained on **synthetic data** generated from 21 evidence-based technique atoms. No cloud LLM is needed — the entire pipeline runs locally from structured definitions.
+
+### Technique Atoms
+
+Each atom in `src/data/techniques.py` encodes a single, citable intervention:
+
+| Field | Purpose |
+|---|---|
+| `id` / `name` | Unique slug and human label |
+| `source` | Citation (see SOURCES.md) |
+| `category` | SDT need or EF cluster |
+| `when_to_use` | Trigger conditions |
+| `language_patterns` | Action-oriented response templates |
+| `anti_patterns` | Responses the model must **never** produce |
+| `user_scenarios` | 10 diverse inputs spanning household, work, school, self-care, social, errands, and health |
+| `actions` | Smart-home actions the response can trigger (JSON strings) |
+| `tags` | Searchable labels |
+
+**21 techniques** across 7 categories:
+
+| Category | Techniques |
+|---|---|
+| SDT Autonomy | Choice Framing, Plan Flexibility, Authentic Inner Compass |
+| SDT Competence | Micro-Scaffolding, Celebration |
+| SDT Relatedness | Body Doubling, Validation |
+| EF Support | Transition Bridging, Energy Matching, Sensory Scaffolding, Working Memory Externalization, Self-Monitoring |
+| Emotion | Shame Spiral Interruption |
+| Automation | Auto-Nudge (system-initiated, non-intrusive) |
+| Time & Routine | Time Pressure Triage, Routine Repair, Decision Fatigue Reduction, Bedtime Wind-Down |
+| Help Seeking | Help-Seeking Validation |
+
+### Generation Pipeline
+
+`make gen-data-ef` runs the pipeline:
+
+1. **Template generation** — pairs each scenario with language patterns in 3 voices:
+   - **Direct**: user speaks to the system
+   - **Self-talk**: user mutters aloud ("ugh, I should really start dinner…")
+   - **Overheard**: housemate asks the user to do something
+2. **Combo generation** — blends two compatible techniques into a single response (e.g., shame spiral interruption + body doubling)
+3. **Negative examples** — anti-pattern responses paired with the same scenarios, labeled `quality: negative` and filtered out during training
+4. **Action injection** — 40% of positive examples get a system action appended (see below)
+
+Typical output: **~817 examples** (775 positive, 42 negative), ~230 with actions.
+
+### System Actions
+
+The EF model can output structured actions that the pipeline executes via Home Assistant. Actions are appended as a JSON line after the spoken text:
+
+```
+Just grab one dish. That's the whole task right now.
+{"action": "set_timer", "minutes": 5, "label": "quick restart"}
+```
+
+The pipeline parses the JSON, sends the spoken text to TTS, and executes the action separately.
+
+| Action | What it does | Example |
+|---|---|---|
+| `set_timer` | Starts an HA timer entity | 5-minute "quick restart" for micro-commitments |
+| `set_reminder` | Schedules a follow-up nudge | 60-minute "check in on energy" |
+| `play_music` | Starts media in the room | Sensory scaffolding for boring tasks |
+| `brighten_lights` | Boosts room brightness | Alertness cue for transitions |
+| `dim_lights` | Lowers room brightness | Wind-down signal for bedtime |
+| `body_double_checkin` | Schedules a "how's it going?" | Virtual body doubling presence |
+| `dismiss_intent` | Stops tracking the current task | Permission to let go |
+
+**Context-aware filtering**: The generator doesn't blindly attach actions to scenarios. A keyword filter in `_maybe_append_action` prevents nonsensical pairings:
+- No `set_timer` for instant tasks (taking medication, replying to a text)
+- No `dismiss_intent` for urgent or health-related items
+- No `set_reminder` delays for high-urgency scenarios
+- No timers when the scenario's deadline is shorter than the timer duration
+
+### Timer Callbacks
+
+When the EF model sets a timer or reminder, the pipeline:
+
+1. Stores conversation context (what the user said, what technique was used, the room) in the `pending_reminders` table
+2. Starts an HA timer entity (e.g., `timer.eh_quick_restart_abc123`)
+3. When the timer fires, HA sends an event → the custom component catches it → calls the gateway's `/ef-reminder-callback` endpoint
+4. The gateway loads the stored context and asks the EF model for a contextual follow-up
+5. The follow-up is spoken through the room's speaker via TTS
+
+This means reminders survive server restarts and carry full conversation context.
+
 ## Project Structure
 
 ```
@@ -512,6 +598,7 @@ These services can be called from HA automations, scripts, or the developer tool
 | `/health` | GET | Server + Ollama status |
 | `/chat` | POST | Chat with EF or auto model |
 | `/ef-support` | POST | Request executive function support |
+| `/ef-reminder-callback` | POST | Timer-fired reminder follow-up (called by HA) |
 | `/transcription` | POST | Process a voice transcription |
 | `/ws/audio/{room_id}` | WebSocket | Stream audio from a room node |
 | `/journal` | GET | Decision journal (embedded in HA panel) |
@@ -542,7 +629,8 @@ make preview-data       Preview training data samples
 make finetune-ef        Fine-tune EF model (QLoRA via Unsloth)
 make finetune-auto      Fine-tune automation model
 make eval               Full evaluation suite
-make export             Merge LoRA → safetensors (via Unsloth)
+make export             Merge LoRA → safetensors (via PEFT, not Unsloth)
+make validate-export    Validate exported model before GGUF conversion
 make convert-gguf       Convert merged safetensors → GGUF bf16
 make quantize-gguf      Quantize bf16 GGUF → Q4_K_M
 make ollama-load        Load quantized GGUF into Ollama
@@ -574,19 +662,30 @@ The training machine and serving machine can be the same box.
 
 ### Step 1: Set Up the Training Machine (WSL + RTX 4090)
 
+> **OS Support**: Tested on WSL2 (Ubuntu 22.04) with NVIDIA RTX 4090.
+> Other Linux distros with CUDA should work. Native Windows is not supported for training.
+
 ```bash
 # Clone the repo on your Windows PC (inside WSL)
 git clone <repo-url> executive-helper
 cd executive-helper
 
-# Run the setup script — installs Unsloth, PyTorch+CUDA, dependencies
-bash scripts/setup_training_wsl.sh
+# Create venv and install all dependencies (core + dev + finetune)
+make setup-dev
 
-# Activate the training venv
-source .venv-train/bin/activate
+# Verify GPU is accessible
+.venv/bin/python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0)}')"
 ```
 
-The setup script checks for CUDA, installs the right PyTorch wheels, and verifies GPU access.
+#### Known Issues
+
+| Issue | Symptom | Fix |
+|---|---|---|
+| `transformers==4.57.2` tokenizer bug | `AttributeError: 'dict' object has no attribute 'model_type'` during export/convert | Pin `transformers>=4.57.3,<=5.2.0` (already set in pyproject.toml) |
+| LongRoPE + torch.compile | `Unsupported: Data-dependent branching` during training | `TORCHDYNAMO_DISABLE=1` (already set in Makefile finetune targets) |
+| Unsloth `save_pretrained_merged` | Merged weights are corrupt (gibberish output) | Export uses plain `transformers` + `peft` merge instead (already handled in export.py) |
+| Unsloth remaps Phi→Llama internally | Adapter's `base_model_name_or_path` points to a BNB-4bit variant | Export auto-remaps to `microsoft/Phi-4-mini-instruct` for full-precision merge |
+| `python` not found (Ubuntu 22.04) | `exit code 127` when Unsloth tries to shell out | We don't use Unsloth's GGUF export; Makefile uses llama.cpp directly |
 
 ### Step 2: Generate Training Data
 
@@ -598,9 +697,9 @@ make gen-data-ef
 python -m src.data.generate --dataset ef --output data/generated/ef --mode combo --count 8 --seed 42
 ```
 
-The data pipeline uses 21 evidence-based technique atoms (grounded in SDT, ADAPT, and Brown's EF clusters) combined with diverse user scenarios. Combo mode generates multi-technique responses — e.g., shame spiral interruption + body doubling in a single reply.
+The data pipeline uses 21 evidence-based technique atoms (grounded in SDT, ADAPT, and Brown's EF clusters) combined with diverse user scenarios across 7 life domains. Combo mode generates multi-technique responses — e.g., shame spiral interruption + body doubling in a single reply. ~40% of positive examples include a smart-home action (timers, lights, music). See the [Training Data](#training-data) section for full details.
 
-Default output: **~850 examples** (250 single-technique + 600 combos), of which ~768 are positive training examples (negatives are filtered during training).
+Default output: **~817 examples** (775 positive, 42 negative, ~230 with actions).
 
 ```bash
 # Preview the data
@@ -629,35 +728,50 @@ Executive Helper — QLoRA Fine-Tuning
 
   GPU: NVIDIA GeForce RTX 4090 (24.0 GB VRAM)
 
-Dataset: 852 total → 768 positive examples (filtered 84 negative)
+Dataset: 817 total → 775 positive examples (filtered 42 negative)
 Starting training...
-  Total steps: ~288
+  Total steps: ~290
 ```
 
 The LoRA adapter checkpoint is saved to `checkpoints/ef/`.
 
 ### Step 4: Export to GGUF and Load into Ollama
 
-The export pipeline has dedicated make targets that chain together:
+The export pipeline merges LoRA adapters, converts to GGUF, quantizes, and loads into Ollama.
+Each step is a separate make target — run them in order:
 
 ```bash
-# Full pipeline: merge → convert → quantize → load into Ollama
-make export          # Merge LoRA weights into safetensors
-make convert-gguf    # Convert safetensors → bf16 GGUF
-make quantize-gguf   # Quantize bf16 → Q4_K_M (~2.2GB)
-make ollama-load     # Register in Ollama
-make ollama-test     # Smoke test
+# 1. Merge LoRA adapters into full-precision safetensors
+#    (loads microsoft/Phi-4-mini-instruct in bf16, applies adapter, saves)
+make export
+
+# 2. Validate the export (checks architecture, vocab, dtypes, tokenizer)
+make validate-export
+
+# 3. Convert → quantize → load into Ollama → smoke test
+make convert-gguf && make quantize-gguf && make ollama-load && make ollama-test
 ```
 
-`make ollama-load` depends on `quantize-gguf` which depends on `convert-gguf`, so you can also just run:
+> **Important**: The targets are independent (no Make dependency chain) to avoid
+> re-running expensive upstream steps. Always run them in order.
 
-```bash
-make export && make ollama-load && make ollama-test
-```
+#### What the export does under the hood
+
+1. **`make export`** — Loads the original Microsoft base model in bf16 (not the Unsloth
+   4-bit variant), applies the LoRA adapter via PEFT `merge_and_unload()`, saves merged
+   safetensors. Also patches `config.json` (strips `quantization_config`) and
+   `tokenizer_config.json` (adds `model_type`).
+2. **`make validate-export`** — Runs `scripts/validate_export.py` which checks for stale
+   shard files, correct architecture/vocab, bf16 tensor dtypes, and tokenizer loading.
+3. **`make convert-gguf`** — Runs llama.cpp's `convert_hf_to_gguf.py` → bf16 GGUF.
+4. **`make quantize-gguf`** — Runs `llama-quantize` → Q4_K_M (~2.2GB).
+5. **`make ollama-load`** — Registers in Ollama via `ollama create`.
 
 This produces:
-- `models/executive-helper-ef.Q4_K_M.gguf` — the quantized model (~2.2GB)
-- `models/Modelfile.executive-helper-ef` — Ollama Modelfile
+- `models/executive-helper-ef/` — merged safetensors (intermediate, ~7.5GB)
+- `models/executive-helper-ef.bf16.gguf` — bf16 GGUF (intermediate, ~7.5GB)
+- `models/executive-helper-ef.Q4_K_M.gguf` — quantized model (~2.2GB)
+- `models/Modelfile.executive-helper-ef` — Ollama Modelfile (checked in)
 
 ### Step 5: Deploy to the Serving Machine
 
@@ -707,11 +821,13 @@ cat data/generated/ef/train.jsonl data/journal_helpful.jsonl > data/combined/tra
 
 # Re-train with the expanded dataset
 # (edit configs/finetune_ef.yaml to point data.path to data/combined/train.jsonl)
-python -m src.finetune.train --config configs/finetune_ef.yaml
+make finetune-ef
 
-# Export and deploy the new version
-python -m src.finetune.export --checkpoint checkpoints/ef --name executive-helper-ef-v2
-# scp → ollama create → update .env → restart
+# Export, validate, convert, quantize, and deploy
+make export
+make validate-export
+make convert-gguf && make quantize-gguf && make ollama-load && make ollama-test
+# If deploying to a remote serving machine, scp the GGUF + Modelfile
 ```
 
 ### Training Config Reference

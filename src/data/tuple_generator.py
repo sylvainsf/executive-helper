@@ -11,6 +11,11 @@ Two modes:
    the specified techniques. Higher quality but requires API access.
 
 Both modes produce tagged tuples traceable to their source techniques.
+
+Scenario voices:
+- DIRECT: User addresses the assistant ("I can't start cleaning")
+- SELF_TALK: User thinking aloud / muttering ("ugh, this mess...")
+- OVERHEARD: Third party asks user to do something ("Hey, can you take out the trash?")
 """
 
 import itertools
@@ -21,16 +26,140 @@ from pathlib import Path
 from src.data.techniques import ALL_TECHNIQUES, TechniqueAtom, get_coverage_report
 
 
+# ── Scenario voice wrappers ──────────────────────────────────────────────────
+# These transform therapy-style scenarios into natural home-context utterances.
+
+SELF_TALK_TEMPLATES = [
+    # Muttering / thinking out loud
+    "ugh... {core}",
+    "*sigh* {core}",
+    "okay... {core}",
+    "I just... {core}",
+    "man, {core}",
+    "god, {core}",
+    "why can't I just... {core}",
+    "I don't even... {core}",
+    "{core}... whatever",
+    "great, {core}",
+    "*staring at the {room}* ...{core}",
+]
+
+OVERHEARD_REQUEST_TEMPLATES = [
+    # Housemate/partner/family asks user to do something
+    'My partner just said "Hey, can you {task}?" and I froze.',
+    'My roommate asked me to {task} like an hour ago and I still haven\'t moved.',
+    '"Can you {task} before dinner?" — that was 30 minutes ago.',
+    'My mom called and asked if I could {task} today and now I\'m spiraling.',
+    '"Hey babe, can you {task}?" Sure, I said. That was two hours ago.',
+    'My housemate said "it\'d be great if you could {task}" and I just... can\'t.',
+    '"You said you\'d {task} this morning" — yeah, I know...',
+    'Someone asked me to {task} and now I feel like I can\'t do anything at all.',
+    '"All you have to do is {task}" — if only it were that simple.',
+    'I told my partner I\'d {task} and now the guilt is eating me alive.',
+]
+
+HOME_TASKS = [
+    "take out the trash", "do the dishes", "clean the kitchen",
+    "fold the laundry", "vacuum the living room", "take the dog out",
+    "start dinner", "clean the bathroom", "put away the groceries",
+    "mop the floor", "water the plants", "sort the mail",
+    "wipe down the counters", "tidy up the bedroom", "empty the dishwasher",
+    "pick up the living room", "put your clothes away", "clean out the fridge",
+    "make the bed", "sweep the porch",
+]
+
+ROOMS = ["kitchen", "living room", "bedroom", "bathroom", "hallway", "office"]
+
+
+def _make_self_talk(scenario: str, rng: random.Random) -> str:
+    """Transform a direct scenario into self-talk / muttering."""
+    # Strip "I " prefix and lowercase for natural muttering
+    core = scenario
+    if core.startswith("I "):
+        core = core[2:].rstrip(".")
+    elif core.startswith("I'm "):
+        core = core[4:].rstrip(".")
+    template = rng.choice(SELF_TALK_TEMPLATES)
+    room = rng.choice(ROOMS)
+    return template.format(core=core, room=room)
+
+
+def _make_overheard(rng: random.Random) -> str:
+    """Generate an overheard third-party request scenario."""
+    task = rng.choice(HOME_TASKS)
+    template = rng.choice(OVERHEARD_REQUEST_TEMPLATES)
+    return template.format(task=task)
+
+
+# ── Incompatibility rules for auto-pairing ───────────────────────────────────
+# Instead of hand-picking 26 pairs from 210 possible, we generate ALL pairs
+# and exclude only the ones that don't make sense together.
+
+# Techniques that are too similar to combine (redundant, not complementary)
+SAME_NICHE = [
+    {"sdt_autonomy_choice", "ef_decision_fatigue"},      # both about choosing
+    {"sdt_autonomy_choice", "sdt_autonomy_aic"},          # both autonomy-choice variants
+    {"sdt_autonomy_flex", "ef_routine_repair"},            # both about plan adjustment
+    {"sdt_competence_micro", "sdt_competence_celebrate"},  # celebrate is the follow-up to micro
+    {"ef_transition", "ef_bedtime"},                        # bedtime IS a transition
+    {"ef_self_monitor", "ef_post_success"},                # post_success IS self-monitoring
+]
+
+# auto_nudge has a unique format (system-triggered, not user speech) — only
+# combine it with techniques that make sense as system-initiated responses
+AUTO_NUDGE_COMPATIBLE = {
+    "sdt_competence_micro", "sdt_autonomy_choice", "ef_energy",
+    "sdt_relatedness_body_double", "emotion_integrative",
+}
+
+
+def _is_compatible_pair(t1: TechniqueAtom, t2: TechniqueAtom) -> bool:
+    """Check if two techniques make sense combined in a single response."""
+    ids = {t1.id, t2.id}
+
+    # Same technique
+    if t1.id == t2.id:
+        return False
+
+    # Too similar / redundant
+    for niche in SAME_NICHE:
+        if ids == niche:
+            return False
+
+    # auto_nudge has limited compatibility
+    if "auto_nudge" in ids:
+        other = (ids - {"auto_nudge"}).pop()
+        return other in AUTO_NUDGE_COMPATIBLE
+
+    return True
+
+
+def get_all_compatible_pairs(
+    techniques: list[TechniqueAtom] | None = None,
+) -> list[tuple[str, str]]:
+    """Generate all compatible technique pairs automatically."""
+    techniques = techniques or ALL_TECHNIQUES
+    pairs = []
+    for t1, t2 in itertools.combinations(techniques, 2):
+        if _is_compatible_pair(t1, t2):
+            pairs.append((t1.id, t2.id))
+    return pairs
+
+
 def generate_template_tuples(
     techniques: list[TechniqueAtom] | None = None,
     examples_per_technique: int = 5,
     include_negatives: bool = True,
+    include_self_talk: bool = True,
+    include_overheard: bool = True,
     seed: int = 42,
 ) -> list[dict]:
     """Generate training tuples by combining technique atoms.
 
     For each technique:
-      - Pairs each user_scenario with appropriate language_patterns
+      - Pairs each user_scenario with appropriate language_patterns (direct voice)
+      - Generates self-talk variants (muttering, thinking aloud)
+      - Generates overheard-request scenarios (housemate asks, user freezes)
       - Creates negative examples from anti_patterns
       - Tags each tuple with technique IDs for coverage tracking
 
@@ -45,15 +174,14 @@ def generate_template_tuples(
         scenarios = tech.user_scenarios
         patterns = tech.language_patterns
 
-        # Generate positive examples
+        # ── Direct voice (original) ──
         pairs = list(itertools.product(scenarios, patterns))
         rng.shuffle(pairs)
         selected = pairs[:examples_per_technique]
 
         for scenario, pattern in selected:
-            # Fill in simple template variables if present
             response = _fill_template(pattern, scenario, tech)
-
+            response = _maybe_append_action(response, tech, rng, scenario=scenario)
             examples.append({
                 "messages": [
                     {"role": "user", "content": scenario},
@@ -65,10 +193,59 @@ def generate_template_tuples(
                     "source": tech.source,
                     "quality": "positive",
                     "generation_method": "template",
+                    "voice": "direct",
                 },
             })
 
-        # Generate negative examples (what NOT to do)
+        # ── Self-talk voice (muttering, thinking aloud) ──
+        if include_self_talk:
+            self_talk_count = max(3, examples_per_technique // 2)
+            st_pairs = list(itertools.product(scenarios, patterns))
+            rng.shuffle(st_pairs)
+
+            for scenario, pattern in st_pairs[:self_talk_count]:
+                self_talk_scenario = _make_self_talk(scenario, rng)
+                response = _fill_template(pattern, scenario, tech)
+                response = _maybe_append_action(response, tech, rng, scenario=scenario)
+                examples.append({
+                    "messages": [
+                        {"role": "user", "content": self_talk_scenario},
+                        {"role": "assistant", "content": response},
+                    ],
+                    "metadata": {
+                        "technique_ids": [tech.id],
+                        "category": tech.category,
+                        "source": tech.source,
+                        "quality": "positive",
+                        "generation_method": "template",
+                        "voice": "self_talk",
+                    },
+                })
+
+        # ── Overheard voice (third-party request) ──
+        if include_overheard and tech.id != "auto_nudge":
+            overheard_count = max(2, examples_per_technique // 3)
+            for _ in range(overheard_count):
+                overheard_scenario = _make_overheard(rng)
+                pattern = rng.choice(patterns)
+                response = _fill_template(pattern, overheard_scenario, tech)
+                response = _maybe_append_action(response, tech, rng, scenario=overheard_scenario)
+                examples.append({
+                    "messages": [
+                        {"role": "user", "content": overheard_scenario},
+                        {"role": "assistant", "content": response},
+                    ],
+                    "metadata": {
+                        "technique_ids": [tech.id],
+                        "category": tech.category,
+                        "source": tech.source,
+                        "quality": "positive",
+                        "generation_method": "template",
+                        "voice": "overheard",
+                    },
+                })
+
+        # ── Negative examples (what NOT to do) ──
         if include_negatives and tech.anti_patterns:
             neg_pairs = list(itertools.product(scenarios, tech.anti_patterns))
             rng.shuffle(neg_pairs)
@@ -76,7 +253,6 @@ def generate_template_tuples(
 
             for scenario, anti_pattern in neg_selected:
                 response = _fill_template(anti_pattern, scenario, tech)
-
                 examples.append({
                     "messages": [
                         {"role": "user", "content": scenario},
@@ -97,88 +273,81 @@ def generate_template_tuples(
 
 def generate_combo_tuples(
     techniques: list[TechniqueAtom] | None = None,
-    combos_to_generate: int = 20,
+    examples_per_pair: int = 3,
+    max_pairs: int | None = None,
     seed: int = 42,
 ) -> list[dict]:
-    """Generate tuples that combine 2-3 techniques naturally.
+    """Generate tuples that combine 2 techniques naturally.
+
+    Auto-generates ALL compatible pairs (instead of hand-picking a few).
+    With 21 techniques this yields ~190 pairs × examples_per_pair examples.
 
     Real conversations often call for multiple techniques at once:
     e.g., a user who's overwhelmed (emotion_integrative) AND can't start
     (competence_micro) AND is alone (relatedness_body_double).
-
-    This generates richer training examples by combining compatible techniques.
     """
     rng = random.Random(seed)
     techniques = techniques or ALL_TECHNIQUES
 
-    # Define natural technique pairings
-    compatible_pairs = [
-        ("emotion_integrative", "sdt_competence_micro"),
-        ("emotion_identity_affirm", "sdt_autonomy_flex"),
-        ("sdt_relatedness_body_double", "sdt_competence_micro"),
-        ("emotion_integrative", "sdt_relatedness_body_double"),
-        ("ef_energy", "sdt_autonomy_flex"),
-        ("ef_transition", "ef_sensory"),
-        ("sdt_autonomy_choice", "sdt_competence_micro"),
-        ("emotion_integrative", "sdt_autonomy_choice"),
-        ("emotion_identity_affirm", "sdt_competence_celebrate"),
-        ("ef_working_memory", "sdt_competence_micro"),
-        ("sdt_autonomy_aic", "emotion_integrative"),
-        ("ef_self_monitor", "sdt_competence_celebrate"),
-        # New technique combos
-        ("ef_time_pressure", "sdt_competence_micro"),
-        ("emotion_shame_spiral", "emotion_identity_affirm"),
-        ("emotion_shame_spiral", "sdt_relatedness_body_double"),
-        ("ef_post_success", "ef_self_monitor"),
-        ("ef_routine_repair", "sdt_autonomy_flex"),
-        ("ef_routine_repair", "sdt_competence_celebrate"),
-        ("ef_decision_fatigue", "sdt_autonomy_choice"),
-        ("ef_decision_fatigue", "sdt_competence_micro"),
-        ("ef_bedtime", "ef_transition"),
-        ("ef_bedtime", "ef_sensory"),
-        ("ef_help_seeking", "emotion_integrative"),
-        ("ef_help_seeking", "sdt_relatedness_body_double"),
-        ("ef_time_pressure", "ef_energy"),
-        ("emotion_shame_spiral", "ef_routine_repair"),
-    ]
+    compatible_pairs = get_all_compatible_pairs(techniques)
+    if max_pairs and len(compatible_pairs) > max_pairs:
+        rng.shuffle(compatible_pairs)
+        compatible_pairs = compatible_pairs[:max_pairs]
 
     tech_map = {t.id: t for t in techniques}
     examples = []
 
-    for _ in range(combos_to_generate):
-        pair = rng.choice(compatible_pairs)
+    for pair in compatible_pairs:
         t1 = tech_map.get(pair[0])
         t2 = tech_map.get(pair[1])
         if not t1 or not t2:
             continue
 
-        # Pick a scenario from either technique
-        scenario = rng.choice(t1.user_scenarios + t2.user_scenarios)
+        for _ in range(examples_per_pair):
+            # Pick voice type: 50% direct, 30% self-talk, 20% overheard
+            voice_roll = rng.random()
 
-        # Combine patterns from both techniques
-        p1 = rng.choice(t1.language_patterns)
-        p2 = rng.choice(t2.language_patterns)
+            if voice_roll < 0.2 and t1.id != "auto_nudge":
+                scenario = _make_overheard(rng)
+                voice = "overheard"
+            elif voice_roll < 0.5:
+                base_scenario = rng.choice(t1.user_scenarios + t2.user_scenarios)
+                scenario = _make_self_talk(base_scenario, rng)
+                voice = "self_talk"
+            else:
+                scenario = rng.choice(t1.user_scenarios + t2.user_scenarios)
+                voice = "direct"
 
-        response_parts = [
-            _fill_template(p1, scenario, t1),
-            _fill_template(p2, scenario, t2),
-        ]
-        response = " ".join(response_parts)
+            # Combine patterns from both techniques
+            p1 = rng.choice(t1.language_patterns)
+            p2 = rng.choice(t2.language_patterns)
 
-        examples.append({
-            "messages": [
-                {"role": "user", "content": scenario},
-                {"role": "assistant", "content": response},
-            ],
-            "metadata": {
-                "technique_ids": [t1.id, t2.id],
-                "category": f"{t1.category}+{t2.category}",
-                "source": f"{t1.source}; {t2.source}",
-                "quality": "positive",
-                "generation_method": "combo_template",
-            },
-        })
+            response_parts = [
+                _fill_template(p1, scenario, t1),
+                _fill_template(p2, scenario, t2),
+            ]
+            response = " ".join(response_parts)
 
+            # For combos, pick an action from either technique
+            action_tech = rng.choice([t1, t2])
+            response = _maybe_append_action(response, action_tech, rng, scenario=scenario)
+
+            examples.append({
+                "messages": [
+                    {"role": "user", "content": scenario},
+                    {"role": "assistant", "content": response},
+                ],
+                "metadata": {
+                    "technique_ids": [t1.id, t2.id],
+                    "category": f"{t1.category}+{t2.category}",
+                    "source": f"{t1.source}; {t2.source}",
+                    "quality": "positive",
+                    "generation_method": "combo_template",
+                    "voice": voice,
+                },
+            })
+
+    rng.shuffle(examples)
     return examples
 
 
@@ -291,17 +460,17 @@ def _fill_template(pattern: str, scenario: str, tech: TechniqueAtom) -> str:
     # Generic fills — these are approximate, meant for template mode.
     # Cloud LLM mode produces much more natural responses.
     fills = {
-        "{option_a}": "the easiest thing",
-        "{option_b}": "the most urgent thing",
-        "{easy_thing}": "the small quick task",
-        "{important_thing}": "the bigger one",
+        "{option_a}": "the dishes",
+        "{option_b}": "the laundry",
+        "{easy_thing}": "the quick one",
+        "{important_thing}": "the big one",
         "{task}": _extract_task(scenario),
-        "{tiny_action}": "pick up one thing near you",
-        "{small_thing}": "that small thing you did",
+        "{tiny_action}": "grab the first thing you see and deal with it",
+        "{small_thing}": "that thing you just did",
         "{room}": "kitchen",
         "{app/drawer/door}": "the app",
-        "{step1}": "start",
-        "{step2}": "keep going from there",
+        "{step1}": "the first thing",
+        "{step2}": "the next one",
         "{thing}": "that approach",
         "{time}": "30",
         "{n}": "three",
@@ -312,6 +481,122 @@ def _fill_template(pattern: str, scenario: str, tech: TechniqueAtom) -> str:
         result = result.replace(key, value)
 
     return result
+
+
+def _maybe_append_action(
+    response: str,
+    tech: TechniqueAtom,
+    rng: random.Random,
+    scenario: str = "",
+    action_probability: float = 0.4,
+) -> str:
+    """Possibly append a system action JSON to the response.
+
+    The EF model is part of a smart home system. When appropriate, it can
+    trigger actions like setting timers, playing music, or dimming lights.
+    The action JSON is appended as a separate line after the spoken text.
+
+    Not every response should have an action — only when the technique
+    naturally leads to one and the scenario makes sense for the action.
+    """
+    if not tech.actions or rng.random() > action_probability:
+        return response
+
+    # Filter actions that don't make sense for this scenario
+    viable = _filter_actions_for_scenario(tech.actions, scenario, tech.id)
+    if not viable:
+        return response
+
+    action = rng.choice(viable)
+    return f"{response}\n{action}"
+
+
+# Keywords that signal high-urgency or time-critical scenarios
+_URGENT_KEYWORDS = [
+    "medication", "meds", "urgency: high", "appointment", "office closes",
+    "leave for", "travel time",
+]
+
+# Keywords that signal discrete/instant tasks (not sustained 5-min activities)
+_INSTANT_TASK_KEYWORDS = [
+    "medication", "meds", "take a pill", "swallow",
+    "reply to", "text back", "respond to",
+]
+
+# Keywords indicating media consumption (episodes, videos, scrolling)
+_MEDIA_KEYWORDS = [
+    "watching", "videos", "scrolling", "episode", "show",
+    "gaming", "game", "youtube",
+]
+
+# Keywords for hygiene/self-care that shouldn't be casually dismissed
+_SELFCARE_KEYWORDS = [
+    "shower", "hygiene", "brush teeth", "eat", "sleep",
+]
+
+# Keywords for committed social or deadline obligations
+_COMMITTED_KEYWORDS = [
+    "can't cancel", "expecting", "friend waiting", "interview",
+    "insurance plan", "health insurance",
+]
+
+
+def _filter_actions_for_scenario(
+    actions: list[str], scenario: str, tech_id: str,
+) -> list[str]:
+    """Remove actions that don't make sense for a given scenario.
+
+    This prevents nonsensical training pairs like medication + "set_timer for
+    quick restart" or guilt-insomnia + "last episode timer".
+    """
+    if not scenario:
+        return actions  # No scenario context — allow all (overheard voice etc.)
+
+    low = scenario.lower()
+    viable = []
+
+    for action_str in actions:
+        # Parse the action type
+        if "dismiss_intent" in action_str:
+            # Don't dismiss urgent, self-care, or committed obligations
+            if any(kw in low for kw in _URGENT_KEYWORDS):
+                continue
+            if tech_id == "sdt_autonomy_aic" and any(kw in low for kw in _SELFCARE_KEYWORDS):
+                continue
+            if any(kw in low for kw in _COMMITTED_KEYWORDS):
+                continue
+
+        elif "set_timer" in action_str:
+            # Don't set "work timers" for instant/discrete tasks (medication, texts)
+            if any(kw in low for kw in _INSTANT_TASK_KEYWORDS):
+                # Allow timers only for bedtime (wind-down is different)
+                if tech_id != "ef_bedtime":
+                    continue
+            # For time-pressure, skip timer if deadline <= timer duration
+            if tech_id == "ef_time_pressure" and _deadline_too_tight(low):
+                continue
+
+        elif "set_reminder" in action_str:
+            # Don't delay urgent items with a reminder
+            if any(kw in low for kw in _URGENT_KEYWORDS):
+                # Medication reminders and appointments shouldn't get a 15-min delay
+                if "urgency: high" in low or "medication" in low or "meds" in low:
+                    continue
+
+        # Action survived all filters
+        viable.append(action_str)
+
+    return viable
+
+
+def _deadline_too_tight(scenario_lower: str) -> bool:
+    """Check if the scenario mentions a deadline of 10 minutes or less."""
+    import re
+    # Match patterns like "in 10 minutes", "10 min", "in 10 min"
+    m = re.search(r"in\s+(\d+)\s*min", scenario_lower)
+    if m and int(m.group(1)) <= 10:
+        return True
+    return False
 
 
 def _extract_task(scenario: str) -> str:

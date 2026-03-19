@@ -2,7 +2,7 @@
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, Event
 
 from .const import DOMAIN
 from .coordinator import EHCoordinator
@@ -21,6 +21,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register services
     await _register_services(hass, coordinator)
+
+    # Listen for EF timer completions → callback to gateway
+    _register_timer_listener(hass, coordinator)
 
     # Register the custom panel for the decision journal
     hass.http.register_static_path(
@@ -78,3 +81,26 @@ async def _register_services(hass: HomeAssistant, coordinator: EHCoordinator):
     hass.services.async_register(DOMAIN, "request_ef_support", handle_ef_support)
     hass.services.async_register(DOMAIN, "dismiss_intent", handle_dismiss_intent)
     hass.services.async_register(DOMAIN, "enroll_speaker", handle_enroll_speaker)
+
+
+def _register_timer_listener(hass: HomeAssistant, coordinator: EHCoordinator):
+    """Listen for timer.finished events on EF-managed timers.
+
+    When the EF model sets a reminder or body-double check-in, it creates
+    an HA timer entity prefixed with 'eh_'. When that timer fires, we call
+    back to the gateway with the timer entity ID so the EF model can
+    deliver a contextual follow-up.
+    """
+    import logging
+    _LOGGER = logging.getLogger(__name__)
+
+    async def _handle_timer_finished(event: Event):
+        entity_id = event.data.get("entity_id", "")
+        # Only handle our timers (prefixed with eh_)
+        if not entity_id.startswith("timer.eh_"):
+            return
+
+        _LOGGER.info("EF timer finished: %s", entity_id)
+        await coordinator.fire_reminder_callback(entity_id)
+
+    hass.bus.async_listen("timer.finished", _handle_timer_finished)
