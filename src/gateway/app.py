@@ -125,17 +125,23 @@ async def ef_reminder_callback(req: ReminderCallbackRequest):
     label = reminder["label"]
     room = reminder["room"]
 
+    prior_response = reminder.get("conversation_context", "")
+
     if action_type == "body_double_checkin":
         prompt = (
             f"You set a check-in timer for the user. They were working on: {original_input}\n"
-            f"Check in on them — are they still going? Be warm and brief."
         )
+        if prior_response:
+            prompt += f"You told them: \"{prior_response}\"\n"
+        prompt += "Check in on them — are they still going? Be warm and brief."
     else:
         prompt = (
             f"You set a reminder for the user about: {label}\n"
             f"The original context was: {original_input}\n"
-            f"Deliver this reminder naturally — be warm, action-oriented, and brief."
         )
+        if prior_response:
+            prompt += f"You told them: \"{prior_response}\"\n"
+        prompt += "Deliver this reminder naturally — be warm, action-oriented, and brief."
 
     try:
         response = await chat("ef", [{"role": "user", "content": prompt}], temperature=0.8)

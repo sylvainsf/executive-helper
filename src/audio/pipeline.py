@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import time
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -15,6 +17,87 @@ from src.audio.tts import TTSEngine
 from src.gateway.models import chat, request_ef_support
 
 logger = logging.getLogger(__name__)
+
+# ── Multi-Turn EF Sessions ──────────────────────────────────────────────────
+
+# Keywords that indicate the user wants to end the EF conversation.
+_CLOSE_KEYWORDS = {"thanks", "thank you", "nevermind", "never mind", "forget it", "stop", "i'm good", "im good"}
+
+# Maximum turns before auto-closing (prevents runaway conversations).
+_MAX_TURNS = 6
+
+# Inactivity timeout in seconds (5 minutes).
+_SESSION_TIMEOUT = 300
+
+
+@dataclass
+class EFSession:
+    """Holds state for a multi-turn EF conversation in a single room."""
+
+    room: str
+    speaker: str
+    messages: list[dict] = field(default_factory=list)
+    created_at: float = field(default_factory=time.monotonic)
+    last_activity: float = field(default_factory=time.monotonic)
+
+    @property
+    def turn_count(self) -> int:
+        """Number of user turns so far."""
+        return sum(1 for m in self.messages if m["role"] == "user")
+
+    def add_user_message(self, text: str) -> None:
+        self.messages.append({"role": "user", "content": text})
+        self.last_activity = time.monotonic()
+
+    def add_assistant_message(self, text: str) -> None:
+        self.messages.append({"role": "assistant", "content": text})
+        self.last_activity = time.monotonic()
+
+    @property
+    def is_expired(self) -> bool:
+        return (time.monotonic() - self.last_activity) > _SESSION_TIMEOUT
+
+    @property
+    def is_at_turn_limit(self) -> bool:
+        return self.turn_count >= _MAX_TURNS
+
+
+class EFSessionManager:
+    """Manages active EF conversation sessions, one per room."""
+
+    def __init__(self):
+        self._sessions: dict[str, EFSession] = {}
+
+    def get(self, room: str) -> EFSession | None:
+        """Return the active session for a room, or None if expired/absent."""
+        session = self._sessions.get(room)
+        if session and session.is_expired:
+            logger.info("EF session in %s expired after %.0fs inactivity", room,
+                        time.monotonic() - session.last_activity)
+            self.close(room)
+            return None
+        return session
+
+    def start(self, room: str, speaker: str, user_text: str) -> EFSession:
+        """Start a new EF session in a room."""
+        session = EFSession(room=room, speaker=speaker)
+        session.add_user_message(user_text)
+        self._sessions[room] = session
+        logger.info("Started EF session in %s", room)
+        return session
+
+    def close(self, room: str) -> None:
+        """Close and discard the session for a room."""
+        if room in self._sessions:
+            session = self._sessions.pop(room)
+            logger.info(
+                "Closed EF session in %s after %d turns (%.0fs)",
+                room, session.turn_count,
+                time.monotonic() - session.created_at,
+            )
+
+    def has_active(self, room: str) -> bool:
+        return self.get(room) is not None
 
 
 class AudioPipeline:
@@ -40,6 +123,7 @@ class AudioPipeline:
         self.tts = TTSEngine(voice=settings.tts_voice, speed=settings.tts_speed)
         self.intent_tracker = IntentTracker()
         self.ha_monitor = HAActivityMonitor()
+        self.ef_sessions = EFSessionManager()
 
         # Callbacks for sending audio responses back to room nodes
         self._response_callbacks: dict[str, list] = {}
@@ -88,6 +172,13 @@ class AudioPipeline:
 
         logger.info("Transcript [%s]: %s", room, result.full_text[:100])
 
+        # If there's an active EF session in this room, continue it
+        # regardless of wake word / conversation / ambient classification.
+        if self.ef_sessions.has_active(room):
+            text = result.full_text.strip()
+            await self._continue_ef_session(room, text)
+            return
+
         # Route based on content
         if result.has_wake_word:
             await self._handle_command(result)
@@ -97,6 +188,97 @@ class AudioPipeline:
             # Single speaker, no wake word — context-dependent
             # Could be ambient speech or a passive observation opportunity
             await self._handle_ambient(result)
+
+    # ── Multi-Turn EF Session Handling ───────────────────────────────────────
+
+    def _is_close_signal(self, text: str) -> bool:
+        """Check if the user's text indicates they want to end the session."""
+        lowered = text.lower().strip().rstrip(".")
+        return lowered in _CLOSE_KEYWORDS
+
+    async def _start_ef_session(
+        self, room: str, speaker: str, user_text: str, ef_response: str,
+    ) -> None:
+        """Start a multi-turn EF session and handle the first response."""
+        session = self.ef_sessions.start(room, speaker, user_text)
+        session.add_assistant_message(ef_response)
+
+        ef_actions = self._extract_ef_actions(ef_response)
+        spoken = self._extract_spoken_text(ef_response)
+
+        if ef_actions:
+            # Model gave actions on first turn → execute and close
+            await self._execute_ef_actions(
+                ef_actions, room,
+                user_input=user_text,
+                ef_spoken_text=spoken or "",
+            )
+            self.ef_sessions.close(room)
+        # else: no actions → session stays open for more turns
+
+        if spoken:
+            await self._speak(room, spoken)
+
+    async def _continue_ef_session(self, room: str, user_text: str) -> None:
+        """Continue an active EF session with a new user turn."""
+        session = self.ef_sessions.get(room)
+        if not session:
+            return
+
+        # Check for close signals
+        if self._is_close_signal(user_text):
+            await self._speak(room, "Got it. I'm here if you need me.")
+            self.ef_sessions.close(room)
+            return
+
+        # Check turn limit
+        if session.is_at_turn_limit:
+            await self._speak(
+                room,
+                "Alright, let's pause here. You've got enough to work with. I'm here if you get stuck.",
+            )
+            self.ef_sessions.close(room)
+            return
+
+        # Add user turn and send full history to EF model
+        session.add_user_message(user_text)
+
+        try:
+            ef_response = await chat("ef", session.messages, temperature=0.8)
+        except Exception as e:
+            logger.warning("EF session chat failed: %s", e)
+            self.ef_sessions.close(room)
+            return
+
+        session.add_assistant_message(ef_response)
+        logger.info("EF session turn %d in %s: %s", session.turn_count, room, ef_response[:200])
+
+        ef_actions = self._extract_ef_actions(ef_response)
+        spoken = self._extract_spoken_text(ef_response)
+
+        if ef_actions:
+            # Model gave actions → execute and close the session
+            await self._execute_ef_actions(
+                ef_actions, room,
+                user_input=user_text,
+                ef_spoken_text=spoken or "",
+            )
+            self.ef_sessions.close(room)
+
+        if spoken:
+            await self._speak(room, spoken)
+
+        # Log multi-turn interaction
+        await self._log_decision(
+            room=room,
+            speaker=session.speaker,
+            input_text=user_text,
+            model="ef",
+            response=ef_response,
+            trigger="ef_session_turn",
+        )
+
+    # ── Single-Turn Handlers ─────────────────────────────────────────────────
 
     async def _handle_command(self, result: TranscriptionResult) -> None:
         """Handle a wake-word-triggered command."""
@@ -124,19 +306,16 @@ class AudioPipeline:
         # Check for EF escalation in the response
         ef_response = await self._check_ef_escalation(response)
 
-        # Parse and execute any EF actions
         if ef_response:
-            ef_actions = self._extract_ef_actions(ef_response)
-            if ef_actions:
-                await self._execute_ef_actions(ef_actions, room, user_input=command_text)
-
-        # Determine what to speak back
-        spoken = (
-            self._extract_spoken_text(ef_response) if ef_response
-            else self._extract_spoken_text(response)
-        )
-        if spoken:
-            await self._speak(room, spoken)
+            # Start a multi-turn EF session. If the model's first response
+            # includes actions (directive + timer), they execute and the
+            # session closes immediately. If it asks a question first, the
+            # session stays open and the next user utterance continues it.
+            await self._start_ef_session(room, speaker, command_text, ef_response)
+        else:
+            spoken = self._extract_spoken_text(response)
+            if spoken:
+                await self._speak(room, spoken)
 
         # Log the decision for the journal
         await self._log_decision(
@@ -170,15 +349,18 @@ class AudioPipeline:
         # Parse and execute any EF actions
         if ef_response:
             ef_actions = self._extract_ef_actions(ef_response)
+            spoken = self._extract_spoken_text(ef_response)
             if ef_actions:
-                await self._execute_ef_actions(ef_actions, room, user_input=transcript)
+                await self._execute_ef_actions(
+                    ef_actions, room,
+                    user_input=transcript,
+                    ef_spoken_text=spoken or "",
+                )
+        else:
+            spoken = self._extract_spoken_text(response)
 
         # Conversations don't always need a spoken response —
         # only speak if the model explicitly generates user-facing text
-        spoken = (
-            self._extract_spoken_text(ef_response) if ef_response
-            else self._extract_spoken_text(response)
-        )
         if spoken:
             await self._speak(room, spoken)
 
@@ -234,9 +416,13 @@ class AudioPipeline:
         # only if the model detects something urgent (e.g., safety concern)
         if ef_response:
             ef_actions = self._extract_ef_actions(ef_response)
-            if ef_actions:
-                await self._execute_ef_actions(ef_actions, room, user_input=text)
             spoken = self._extract_spoken_text(ef_response)
+            if ef_actions:
+                await self._execute_ef_actions(
+                    ef_actions, room,
+                    user_input=text,
+                    ef_spoken_text=spoken or "",
+                )
             if spoken:
                 await self._speak(room, spoken)
 
@@ -321,6 +507,7 @@ class AudioPipeline:
         actions: list[dict],
         room: str,
         user_input: str = "",
+        ef_spoken_text: str = "",
     ) -> None:
         """Execute system actions returned by the EF model.
 
@@ -365,6 +552,7 @@ class AudioPipeline:
                         label=label,
                         minutes=minutes,
                         action_type="reminder",
+                        conversation_context=ef_spoken_text,
                         original_user_input=user_input,
                         timer_entity_id=timer_entity,
                     )
@@ -413,6 +601,7 @@ class AudioPipeline:
                         label="body_double_checkin",
                         minutes=minutes,
                         action_type="body_double_checkin",
+                        conversation_context=ef_spoken_text,
                         original_user_input=user_input,
                         timer_entity_id=timer_entity,
                     )
@@ -491,19 +680,12 @@ class AudioPipeline:
         ef_response = await request_ef_support(context)
 
         if ef_response:
-            # Speak in the room where the user currently is (or was last detected)
             target_room = intent.room_detected
 
-            # Parse and execute any actions from the EF model
-            ef_actions = self._extract_ef_actions(ef_response)
-            if ef_actions:
-                await self._execute_ef_actions(
-                    ef_actions, target_room, user_input=intent.transcript,
-                )
-
-            spoken = self._extract_spoken_text(ef_response)
-            if spoken:
-                await self._speak(target_room, spoken)
+            # Start a multi-turn session — user might respond to the nudge
+            await self._start_ef_session(
+                target_room, intent.speaker, intent.transcript, ef_response,
+            )
 
         await self._log_decision(
             room=intent.room_detected,
