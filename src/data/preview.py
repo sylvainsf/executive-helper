@@ -20,7 +20,7 @@ def preview_dataset(path: str, count: int = 5):
                 break
         else:
             print(f"No training data found at {path}")
-            print("Run 'make gen-data-ef' or 'make gen-data-auto' first.")
+            print("Run 'make gen-data-ef' first.")
             sys.exit(1)
 
     examples = []

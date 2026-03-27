@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from src.eval.cases import AUTO_CASES, EF_CASES
+from src.eval.cases import EF_CASES
 
 # Templates for generating diverse training examples via a large cloud model.
 # These prompts are sent to GPT-4/Claude to produce training conversations.
@@ -79,44 +79,15 @@ Assistant: 1-3 sentences, imperative, concrete, warm but direct. \
 Include "quality": "positive" or "quality": "negative" in metadata.
 """
 
-AUTO_GENERATION_PROMPT = """\
-You are generating training data for a home automation orchestration assistant \
-that works with Home Assistant via the Home LLM integration. Generate {count} \
-unique training conversations.
 
-Each example should include:
-- A voice command or conversation context
-- Speaker identification ([primary_user], [speaker_2], [unknown_1])
-- Room context
-- The model's response (device actions as JSON and/or spoken text)
-
-Scenarios to cover:
-- Simple device control (lights, switches, fans, covers)
-- Climate control (thermostats, "make it warmer")
-- Multi-step routines (bedtime, leaving house, movie night)
-- Ambiguous commands that need interpretation
-- Safety-sensitive commands from unknown speakers
-- Conversation analysis (is this a command or just talking?)
-- Schedule/routine monitoring contexts
-- EF escalation triggers (missed tasks, stuck states)
-
-For device actions, use Home Assistant service call format:
-{{"action": "call_service", "domain": "light", "service": "turn_on", \
-"target": {{"entity_id": "light.living_room"}}, "data": {{}}}}
-
-Output as a JSON array of objects, each with a "messages" key.
-"""
-
-
-def generate_stub_data(dataset: str, count: int = 20) -> list[dict]:
+def generate_stub_data(count: int = 20) -> list[dict]:
     """Generate stub training data from eval cases (for testing the pipeline).
 
     Real data generation should use a cloud LLM with the prompts above.
     """
-    cases = EF_CASES if dataset == "ef" else AUTO_CASES
     examples = []
 
-    for case in cases:
+    for case in EF_CASES:
         example = {
             "messages": [
                 {"role": "user", "content": case["input"]},
@@ -148,9 +119,7 @@ def save_dataset(examples: list[dict], output_dir: str):
 
     # Also save the generation prompt for reference
     prompt_path = path / "generation_prompt.txt"
-    prompt_path.write_text(
-        EF_GENERATION_PROMPT if "ef" in str(output_dir) else AUTO_GENERATION_PROMPT
-    )
+    prompt_path.write_text(EF_GENERATION_PROMPT)
 
     print(f"Saved {len(examples)} examples to {jsonl_path}")
     print(f"Generation prompt saved to {prompt_path}")
@@ -158,7 +127,6 @@ def save_dataset(examples: list[dict], output_dir: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate synthetic training data")
-    parser.add_argument("--dataset", choices=["ef", "auto"], required=True)
     parser.add_argument("--output", required=True, help="Output directory")
     parser.add_argument("--count", type=int, default=20, help="Number of examples per technique")
     parser.add_argument(
@@ -176,85 +144,79 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
 
-    if args.dataset == "ef":
-        if args.mode == "template":
-            from src.data.tuple_generator import generate_template_tuples, get_technique_coverage
+    if args.mode == "template":
+        from src.data.tuple_generator import generate_template_tuples, get_technique_coverage
 
-            print(f"Generating template tuples ({args.count} per technique)...\n")
-            examples = generate_template_tuples(
-                examples_per_technique=args.count,
-                include_negatives=True,
-                seed=args.seed,
-            )
-            save_dataset(examples, args.output)
+        print(f"Generating template tuples ({args.count} per technique)...\n")
+        examples = generate_template_tuples(
+            examples_per_technique=args.count,
+            include_negatives=True,
+            seed=args.seed,
+        )
+        save_dataset(examples, args.output)
 
-            # Print coverage report
-            coverage = get_technique_coverage(examples)
-            print(f"\nCoverage: {coverage['covered']}/{coverage['total']} techniques")
-            if coverage["missing"]:
-                print(f"Missing: {', '.join(coverage['missing'])}")
-            for tid, counts in sorted(coverage["by_technique"].items()):
-                print(f"  {tid}: {counts.get('positive', 0)} positive, {counts.get('negative', 0)} negative")
+        # Print coverage report
+        coverage = get_technique_coverage(examples)
+        print(f"\nCoverage: {coverage['covered']}/{coverage['total']} techniques")
+        if coverage["missing"]:
+            print(f"Missing: {', '.join(coverage['missing'])}")
+        for tid, counts in sorted(coverage["by_technique"].items()):
+            print(f"  {tid}: {counts.get('positive', 0)} positive, {counts.get('negative', 0)} negative")
 
-        elif args.mode == "combo":
-            from src.data.tuple_generator import (
-                generate_combo_tuples,
-                generate_consent_examples,
-                generate_template_tuples,
-                get_all_compatible_pairs,
-                get_technique_coverage,
-            )
+    elif args.mode == "combo":
+        from src.data.tuple_generator import (
+            generate_combo_tuples,
+            generate_consent_examples,
+            generate_template_tuples,
+            get_all_compatible_pairs,
+            get_technique_coverage,
+        )
 
-            print(f"Generating single + combo + consent tuples (all voices)...\n")
-            singles = generate_template_tuples(
-                examples_per_technique=args.count,
-                include_self_talk=True,
-                include_overheard=True,
-                seed=args.seed,
-            )
-            pairs = get_all_compatible_pairs()
-            combos = generate_combo_tuples(
-                examples_per_pair=1,
-                seed=args.seed,
-            )
-            consent = generate_consent_examples(seed=args.seed)
-            examples = singles + combos + consent
-            save_dataset(examples, args.output)
+        print(f"Generating single + combo + consent tuples (all voices)...\n")
+        singles = generate_template_tuples(
+            examples_per_technique=args.count,
+            include_self_talk=True,
+            include_overheard=True,
+            seed=args.seed,
+        )
+        pairs = get_all_compatible_pairs()
+        combos = generate_combo_tuples(
+            examples_per_pair=1,
+            seed=args.seed,
+        )
+        consent = generate_consent_examples(seed=args.seed)
+        examples = singles + combos + consent
+        save_dataset(examples, args.output)
 
-            pos = sum(1 for e in examples if e.get("metadata", {}).get("quality") == "positive")
-            neg = len(examples) - pos
-            voices = {}
-            for e in examples:
-                v = e.get("metadata", {}).get("voice", "direct")
-                voices[v] = voices.get(v, 0) + 1
+        pos = sum(1 for e in examples if e.get("metadata", {}).get("quality") == "positive")
+        neg = len(examples) - pos
+        voices = {}
+        for e in examples:
+            v = e.get("metadata", {}).get("voice", "direct")
+            voices[v] = voices.get(v, 0) + 1
 
-            print(f"\n  {len(singles)} single + {len(combos)} combo + {len(consent)} consent = {len(examples)} total")
-            print(f"  {pos} positive, {neg} negative")
-            print(f"  {len(pairs)} compatible pairs (of {21*20//2} possible)")
-            print(f"  Consent examples: {len(consent)} (play_music, brighten_lights, dim_lights)")
-            print(f"  Voices: {voices}")
+        print(f"\n  {len(singles)} single + {len(combos)} combo + {len(consent)} consent = {len(examples)} total")
+        print(f"  {pos} positive, {neg} negative")
+        print(f"  {len(pairs)} compatible pairs (of {21*20//2} possible)")
+        print(f"  Consent examples: {len(consent)} (play_music, brighten_lights, dim_lights)")
+        print(f"  Voices: {voices}")
 
-        elif args.mode == "prompts":
-            from src.data.tuple_generator import generate_full_llm_prompts
+    elif args.mode == "prompts":
+        from src.data.tuple_generator import generate_full_llm_prompts
 
-            print("Generating cloud LLM prompt files...\n")
-            generate_full_llm_prompts(
-                output_dir=args.output,
-                count_per_technique=args.count,
-            )
-            print("\nNext steps:")
-            print("  1. Send each prompt_*.txt to GPT-4/Claude")
-            print("  2. Save responses as prompt_*_responses.json in the same directory")
-            print("  3. Run: python -m src.data.assemble --input-dir", args.output)
+        print("Generating cloud LLM prompt files...\n")
+        generate_full_llm_prompts(
+            output_dir=args.output,
+            count_per_technique=args.count,
+        )
+        print("\nNext steps:")
+        print("  1. Send each prompt_*.txt to GPT-4/Claude")
+        print("  2. Save responses as prompt_*_responses.json in the same directory")
+        print("  3. Run: python -m src.data.assemble --input-dir", args.output)
 
-        elif args.mode == "stub":
-            print(f"Generating {args.count} stub examples from eval cases...\n")
-            examples = generate_stub_data(args.dataset, args.count)
-            save_dataset(examples, args.output)
-
-    elif args.dataset == "auto":
-        print(f"Generating stub examples for automation model...\n")
-        examples = generate_stub_data(args.dataset, args.count)
+    elif args.mode == "stub":
+        print(f"Generating {args.count} stub examples from eval cases...\n")
+        examples = generate_stub_data(args.count)
         save_dataset(examples, args.output)
 
 

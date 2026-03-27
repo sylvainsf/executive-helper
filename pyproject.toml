@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "executive-helper"
 version = "0.1.0"
-description = "Dual Phi-4-mini system: executive dysfunction coaching + home automation orchestration"
+description = "Executive dysfunction coaching assistant for smart homes, powered by a fine-tuned Phi-4-mini model"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",

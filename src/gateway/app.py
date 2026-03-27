@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Executive Helper Gateway",
-    description="Routes between executive function and home automation models",
+    description="Executive function support gateway with smart home integration",
     version="0.1.0",
 )
 

@@ -1,19 +1,19 @@
 # Executive Helper
 
-A locally-hosted AI system that combines **executive dysfunction support** with **smart home automation**, using small language models that run entirely on your own hardware. No cloud. No subscriptions. No data leaves your network.
+A locally-hosted AI system for **executive dysfunction support** in a smart home, powered by a fine-tuned language model that runs entirely on your own hardware. No cloud. No subscriptions. No data leaves your network.
 
 ## What It Does
 
-Executive Helper is built for people who experience executive dysfunction — the difficulty starting tasks, switching between activities, managing time, and maintaining routines that affects people with ADHD, autism, depression, chronic fatigue, and many other conditions.
+Executive Helper is built for people who experience executive dysfunction: the difficulty starting tasks, switching between activities, managing time, and maintaining routines that affects people with ADHD, autism, depression, chronic fatigue, and many other conditions.
 
-It pairs a fine-tuned executive function coaching model with [Home LLM](https://github.com/acon96/home-llm)'s smart home control, connected through a multi-room audio pipeline using [Seeedstudio ReSpeaker Lite](https://www.seeedstudio.com/ReSpeaker-Lite-p-5928.html) mic arrays.
+It uses a fine-tuned EF coaching model connected to Home Assistant through a multi-room audio pipeline using [Seeedstudio ReSpeaker Lite](https://www.seeedstudio.com/ReSpeaker-Lite-p-5928.html) mic arrays. Smart home control is handled by [Home LLM](https://github.com/acon96/home-llm).
 
 **What it can do:**
 
 - **Detect when you're stuck** — if you say "I should start dinner" but no kitchen activity follows, it gently checks in after a configurable grace period
 - **Break tasks into micro-steps** — instead of "clean the kitchen," it offers "can you pick up one thing near you right now?"
 - **Manage routines with compassion** — medication reminders, bedtime routines, and meal prep nudges in a warm, non-judgmental tone grounded in Self-Determination Theory
-- **Control your smart home by voice** — lights, thermostat, locks, media — via natural language through Home Assistant + Home LLM
+- **Use smart home tools** — the EF model can set timers, play music, adjust lights, and schedule reminders through Home Assistant to help you get unstuck
 - **Identify speakers** — distinguishes you from other household members so behavioral support is directed appropriately
 - **Log every decision for review** — a web UI lets you rate both functional correctness ("did it work?") and personal effectiveness ("did it work *for me*?")
 
@@ -75,9 +75,9 @@ Per-Room Node                              Central Server (GPU)
 | Component | Version | Purpose |
 |---|---|---|
 | **Home Assistant** | 2025.7.0+ | Smart home platform |
-| **HACS** | Latest | Home Assistant Community Store (for Home LLM) |
-| **Home LLM** | v0.4.6+ | HA integration for local LLM device control |
-| **Ollama** | Latest | Model serving (EF model + optionally Home LLM models) |
+| **HACS** | Latest | Home Assistant Community Store |
+| **Home LLM** | v0.4.6+ | HA integration for voice-based device control (separate project) |
+| **Ollama** | Latest | Model serving (EF model) |
 | **Python** | 3.10+ | Executive Helper runtime |
 | **GPU** | 8GB+ VRAM | Runs EF model + Whisper (or Apple Silicon with unified memory) |
 
@@ -422,12 +422,11 @@ Ratings feed back into the fine-tuning data pipeline: helpful decisions become p
 | Component | Model | Size | Runs On | Purpose |
 |---|---|---|---|---|
 | Executive Function | Phi-4-mini-instruct (fine-tuned) | 3.8B, ~2.5GB Q4 | GPU | Coaching, task decomposition, gentle nudges |
-| Home Automation | Home-Llama-3.2-3B (via Home LLM) | 3B, ~2GB Q4 | GPU | Device control, routines, HA service calls |
 | Speech-to-Text | Whisper (tiny or base) | 39-74M, ~150MB | CPU | Voice transcription |
 | Speaker ID | ECAPA-TDNN (SpeechBrain) | ~25MB | CPU | Distinguish primary user from others |
 | Text-to-Speech | Kokoro | ~300MB | CPU | Warm, natural spoken responses |
 
-**Total VRAM**: ~4.5GB with EF + Whisper loaded. Home LLM runs via Ollama and shares the GPU. Fits on 8GB with headroom.
+**Total VRAM**: ~2.5GB with EF model + Whisper loaded. If also running Home LLM, add ~2GB. Fits on 8GB with headroom.
 
 ## Training Data
 
@@ -564,11 +563,9 @@ executive-helper/
 ├── SOURCES.md                      # Research references & evidence base
 ├── configs/
 │   ├── settings.py                 # Pydantic settings (env vars)
-│   ├── finetune_ef.yaml            # QLoRA config for EF model
-│   └── finetune_auto.yaml          # QLoRA config for automation model
+│   └── finetune_ef.yaml            # QLoRA config for EF model
 ├── prompts/
-│   ├── ef_system.md                # System prompt for EF model (SDT-based)
-│   └── auto_system.md              # System prompt for automation model
+│   └── ef_system.md                # System prompt for EF model (SDT-based)
 ├── custom_components/
 │   └── executive_helper/            # HA custom integration
 │       ├── manifest.json            # Integration metadata
@@ -637,7 +634,7 @@ These services can be called from HA automations, scripts, or the developer tool
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/health` | GET | Server + Ollama status |
-| `/chat` | POST | Chat with EF or auto model |
+| `/chat` | POST | Chat with EF model |
 | `/ef-support` | POST | Request executive function support |
 | `/ef-reminder-callback` | POST | Timer-fired reminder follow-up (called by HA) |
 | `/transcription` | POST | Process a voice transcription |
@@ -662,13 +659,10 @@ make serve-bg           Start gateway server (background)
 make stop               Stop background server
 make test               Run pytest suite
 make test-ef            Evaluate EF model (baseline)
-make test-auto          Evaluate automation model (baseline)
 make test-audio         Test audio round-trip
 make gen-data-ef        Generate synthetic EF training data
-make gen-data-auto      Generate synthetic automation training data
 make preview-data       Preview training data samples
 make finetune-ef        Fine-tune EF model (QLoRA via Unsloth)
-make finetune-auto      Fine-tune automation model
 make eval               Full evaluation suite
 make export             Merge LoRA → safetensors (via PEFT, not Unsloth)
 make validate-export    Validate exported model before GGUF conversion
@@ -838,8 +832,7 @@ Update your `.env` on the serving machine:
 
 ```bash
 # .env
-EH_EF_MODEL=executive-helper-ef    # ← your fine-tuned model
-EH_AUTO_MODEL=phi4-mini:latest  # automation stays base for now
+EH_EF_MODEL=executive-helper-ef    # your fine-tuned model
 ```
 
 Restart the Executive Helper backend:

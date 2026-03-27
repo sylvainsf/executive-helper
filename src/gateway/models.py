@@ -34,7 +34,7 @@ async def chat(
     Returns:
         The assistant's response text.
     """
-    model_name = settings.ef_model if model_role == "ef" else settings.auto_model
+    model_name = settings.ef_model
     system_prompt = _load_prompt(model_role)
 
     full_messages = [{"role": "system", "content": system_prompt}, *messages]
@@ -59,10 +59,10 @@ async def chat(
 async def request_ef_support(context: dict) -> str:
     """Ask the executive function model for supportive guidance.
 
-    Called by the automation model when behavioral support is needed.
+    Called when the system detects a need for behavioral support.
     """
     prompt = (
-        f"The home automation system is requesting your help. Here is the context:\n\n"
+        f"The smart home system is requesting your help. Here is the context:\n\n"
         f"Scheduled task: {context.get('scheduled_task', 'unknown')}\n"
         f"Scheduled time: {context.get('scheduled_time', 'unknown')}\n"
         f"Current time: {context.get('current_time', 'unknown')}\n"

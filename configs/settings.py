@@ -5,7 +5,6 @@ class Settings(BaseSettings):
     # Ollama
     ollama_host: str = "http://localhost:11434"
     ef_model: str = "executive-helper-ef"
-    auto_model: str = "phi4-mini:latest"
 
     # Gateway
     gateway_host: str = "0.0.0.0"

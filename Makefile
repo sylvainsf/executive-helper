@@ -1,7 +1,7 @@
 .PHONY: help setup setup-dev pull-models serve serve-bg stop \
-       test test-ef test-auto test-audio \
-       gen-data-ef gen-data-auto preview-data \
-       finetune-ef finetune-auto eval export validate-export \
+       test test-ef test-audio \
+       gen-data-ef preview-data \
+       finetune-ef eval export validate-export \
        convert-gguf quantize-gguf ollama-load ollama-test \
        lint format clean
 
@@ -62,19 +62,13 @@ test: setup-dev ## Run all tests
 test-ef: setup ## Test executive function model (baseline eval)
 	$(PY) -m src.eval.run --model ef
 
-test-auto: setup ## Test automation model (baseline eval)
-	$(PY) -m src.eval.run --model auto
-
 test-audio: setup-audio ## Test audio round-trip (mic → transcription → response → speaker)
 	$(PY) -m src.audio.test_pipeline
 
 # ── Data Generation ─────────────────────────────────────────────────────────
 
 gen-data-ef: setup ## Generate synthetic executive dysfunction training data
-	$(PY) -m src.data.generate --dataset ef --output data/generated/ef --mode combo --count 10 --seed 42
-
-gen-data-auto: setup ## Generate synthetic home automation training data
-	$(PY) -m src.data.generate --dataset auto --output data/generated/auto
+	$(PY) -m src.data.generate --output data/generated/ef --mode combo --count 10 --seed 42
 
 preview-data: ## Preview generated training data samples
 	$(PY) -m src.data.preview
@@ -84,10 +78,6 @@ preview-data: ## Preview generated training data samples
 finetune-ef: setup-dev ## Fine-tune Phi-4-mini for executive dysfunction support
 	@rm -rf unsloth_compiled_cache
 	TORCHDYNAMO_DISABLE=1 $(PY) -m src.finetune.train --config configs/finetune_ef.yaml
-
-finetune-auto: setup-dev ## Fine-tune Phi-4-mini for home automation
-	@rm -rf unsloth_compiled_cache
-	TORCHDYNAMO_DISABLE=1 $(PY) -m src.finetune.train --config configs/finetune_auto.yaml
 
 eval: setup-dev ## Run evaluation suite (baseline vs fine-tuned)
 	$(PY) -m src.eval.run --compare

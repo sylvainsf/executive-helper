@@ -43,7 +43,7 @@ def _resolve_base_model(checkpoint_dir: str) -> str:
         base = json.loads(adapter_cfg.read_text()).get("base_model_name_or_path")
 
     if not base:
-        for cfg_path in ["configs/finetune_ef.yaml", "configs/finetune_auto.yaml"]:
+        for cfg_path in ["configs/finetune_ef.yaml"]:
             p = Path(cfg_path)
             if p.exists():
                 cfg = yaml.safe_load(p.read_text())
@@ -185,7 +185,7 @@ def main():
         if not any(Path(p).exists() for p in ["checkpoints/ef", "checkpoints/auto"]):
             print("No checkpoints found. Run fine-tuning first:")
             print("  make finetune-ef")
-            print("  make finetune-auto")
+            print("  make finetune-ef")
     else:
         name = args.name or Path(args.checkpoint).name
         export_merged(args.checkpoint, name)

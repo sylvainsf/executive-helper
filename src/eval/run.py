@@ -7,7 +7,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.eval.cases import AUTO_CASES, EF_CASES
+from src.eval.cases import EF_CASES
 from src.gateway.models import chat
 
 
@@ -35,9 +35,9 @@ async def evaluate_case(case: dict, model_role: str) -> dict:
     }
 
 
-async def run_eval(model_role: str) -> list[dict]:
+async def run_eval(model_role: str = "ef") -> list[dict]:
     """Run all eval cases for a model role."""
-    cases = EF_CASES if model_role == "ef" else AUTO_CASES
+    cases = EF_CASES
     print(f"\nRunning {len(cases)} eval cases for '{model_role}' model\n")
 
     results = []
@@ -87,29 +87,20 @@ def save_results(results: list[dict], output_dir: str = "data/eval"):
 
 
 async def run_comparison():
-    """Run eval for both models and display side by side."""
-    for role in ("ef", "auto"):
-        results = await run_eval(role)
-        print_results(results)
-        save_results(results)
+    """Run eval and display results."""
+    results = await run_eval("ef")
+    print_results(results)
+    save_results(results)
 
 
 async def main():
     parser = argparse.ArgumentParser(description="Run model evaluation")
-    parser.add_argument(
-        "--model",
-        choices=["ef", "auto"],
-        help="Which model to evaluate (omit for both)",
-    )
-    parser.add_argument("--compare", action="store_true", help="Run both models")
+    parser.add_argument("--compare", action="store_true", help="Run full evaluation")
     args = parser.parse_args()
 
-    if args.compare or args.model is None:
-        await run_comparison()
-    else:
-        results = await run_eval(args.model)
-        print_results(results)
-        save_results(results)
+    results = await run_eval("ef")
+    print_results(results)
+    save_results(results)
 
 
 if __name__ == "__main__":
