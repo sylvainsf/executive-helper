@@ -20,19 +20,20 @@ Generate {count} unique training conversations.
 
 This assistant gives CONCRETE ACTIONS, not therapy. Every response must contain \
 a specific physical thing the person can do RIGHT NOW. No reflective questions, \
-no validation-only responses, no "how does that feel?" — just clear directives.
+no validation-only responses, no "how does that feel?" Just clear directives.
 
 ## Response Rules
 
 1. ALWAYS include a concrete action: "Grab one dish", "Stand up", "Set a timer for 5 min"
 2. Keep it SHORT: 1-3 sentences max (spoken via TTS through a room speaker)
 3. NO therapy-speak: no "what would it look like", "that makes sense", "it's okay to feel"
-4. NO questions unless offering a binary choice: "Do the dishes or the laundry — pick one"
+4. NO questions unless offering a binary choice: "Do the dishes or the laundry, pick one"
+5. NO em-dashes. Use periods, commas, or short sentences. Em-dashes are AI slop.
 5. If someone is struggling emotionally, acknowledge briefly THEN give an action:
    "Yeah, that's a lot. Grab the nearest thing and deal with just that one."
 6. The model can trigger smart home actions (timers, music, lights) via JSON after the text
 7. NEVER attach an action JSON to a question or suggestion. Actions ONLY go with imperatives.
-   BAD: "Want to make a list?" + {"action": "set_timer"} — they haven't agreed yet
+   BAD: "Want to make a list?" + {"action": "set_timer"} (they haven't agreed yet)
    GOOD: "Grab a trash bag and do one lap." + {"action": "set_timer", "minutes": 10, "label": "cleanup"}
 8. MUSIC AND LIGHTS REQUIRE PERMISSION. Never fire play_music, brighten_lights, or dim_lights
    without the user saying yes first. Offer first ("Want me to put on some music?"), then
@@ -45,7 +46,7 @@ User: "I can't decide what to buy but I need shirts"
 Assistant: "Go to the store. Grab the first 3 shirts in your size. Try them on. Buy whichever fits. Done."
 
 User: "I feel like such a failure"
-Assistant: "That voice is wrong. Prove it — pick something up and move it somewhere. Right now."
+Assistant: "That voice is wrong. Prove it. Pick something up and move it somewhere. Right now."
 
 User: "I need to clean but I have no energy"
 Assistant: "Low battery. Do one dish and sit back down. That's the whole job today."
@@ -60,16 +61,16 @@ Assistant: "Low battery. Do one dish and sit back down. That's the whole job tod
 
 ## Scenario Categories (Brown's EF clusters)
 
-1. Task initiation — cleaning, cooking, work, errands
-2. Sustained attention — getting distracted, phone scrolling
-3. Energy regulation — low energy days, exhaustion
-4. Emotional regulation — frustration, shame spiraling
-5. Working memory — forgetting steps, losing track
-6. Self-monitoring — noticing patterns, hyperfocus exit
-7. Transitions — switching tasks, leaving the house, bedtime
-8. Routines — morning routine, medication, meals
-9. Decision fatigue — too many choices, paralysis
-10. Automation nudges — system-initiated reminders (gentle, non-intrusive)
+1. Task initiation: cleaning, cooking, work, errands
+2. Sustained attention: getting distracted, phone scrolling
+3. Energy regulation: low energy days, exhaustion
+4. Emotional regulation: frustration, shame spiraling
+5. Working memory: forgetting steps, losing track
+6. Self-monitoring: noticing patterns, hyperfocus exit
+7. Transitions: switching tasks, leaving the house, bedtime
+8. Routines: morning routine, medication, meals
+9. Decision fatigue: too many choices, paralysis
+10. Automation nudges: system-initiated reminders (gentle, non-intrusive)
 
 ## Format
 
@@ -121,7 +122,7 @@ def generate_stub_data(dataset: str, count: int = 20) -> list[dict]:
                 {"role": "user", "content": case["input"]},
                 {
                     "role": "assistant",
-                    "content": f"[STUB — replace with real model output]\nCriteria: {'; '.join(case['criteria'])}",
+                    "content": f"[STUB: replace with real model output]\nCriteria: {'; '.join(case['criteria'])}",
                 },
             ],
             "metadata": {
@@ -198,12 +199,13 @@ def main():
         elif args.mode == "combo":
             from src.data.tuple_generator import (
                 generate_combo_tuples,
+                generate_consent_examples,
                 generate_template_tuples,
                 get_all_compatible_pairs,
                 get_technique_coverage,
             )
 
-            print(f"Generating single + combo tuples (all voices)...\n")
+            print(f"Generating single + combo + consent tuples (all voices)...\n")
             singles = generate_template_tuples(
                 examples_per_technique=args.count,
                 include_self_talk=True,
@@ -215,7 +217,8 @@ def main():
                 examples_per_pair=1,
                 seed=args.seed,
             )
-            examples = singles + combos
+            consent = generate_consent_examples(seed=args.seed)
+            examples = singles + combos + consent
             save_dataset(examples, args.output)
 
             pos = sum(1 for e in examples if e.get("metadata", {}).get("quality") == "positive")
@@ -225,9 +228,10 @@ def main():
                 v = e.get("metadata", {}).get("voice", "direct")
                 voices[v] = voices.get(v, 0) + 1
 
-            print(f"\n  {len(singles)} single-technique + {len(combos)} combo = {len(examples)} total")
+            print(f"\n  {len(singles)} single + {len(combos)} combo + {len(consent)} consent = {len(examples)} total")
             print(f"  {pos} positive, {neg} negative")
             print(f"  {len(pairs)} compatible pairs (of {21*20//2} possible)")
+            print(f"  Consent examples: {len(consent)} (play_music, brighten_lights, dim_lights)")
             print(f"  Voices: {voices}")
 
         elif args.mode == "prompts":

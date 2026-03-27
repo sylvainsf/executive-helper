@@ -48,13 +48,13 @@ OVERHEARD_REQUEST_TEMPLATES = [
     # Housemate/partner/family asks user to do something
     'My partner just said "Hey, can you {task}?" and I froze.',
     'My roommate asked me to {task} like an hour ago and I still haven\'t moved.',
-    '"Can you {task} before dinner?" — that was 30 minutes ago.',
+    '"Can you {task} before dinner?" That was 30 minutes ago.',
     'My mom called and asked if I could {task} today and now I\'m spiraling.',
     '"Hey babe, can you {task}?" Sure, I said. That was two hours ago.',
     'My housemate said "it\'d be great if you could {task}" and I just... can\'t.',
-    '"You said you\'d {task} this morning" — yeah, I know...',
+    '"You said you\'d {task} this morning." Yeah, I know...',
     'Someone asked me to {task} and now I feel like I can\'t do anything at all.',
-    '"All you have to do is {task}" — if only it were that simple.',
+    '"All you have to do is {task}." If only it were that simple.',
     'I told my partner I\'d {task} and now the guilt is eating me alive.',
 ]
 
@@ -105,7 +105,7 @@ SAME_NICHE = [
     {"ef_self_monitor", "ef_post_success"},                # post_success IS self-monitoring
 ]
 
-# auto_nudge has a unique format (system-triggered, not user speech) — only
+# auto_nudge has a unique format (system-triggered, not user speech). Only
 # combine it with techniques that make sense as system-initiated responses
 AUTO_NUDGE_COMPATIBLE = {
     "sdt_competence_micro", "sdt_autonomy_choice", "ef_energy",
@@ -351,6 +351,304 @@ def generate_combo_tuples(
     return examples
 
 
+# ── Multi-Turn Consent Examples (music, lights) ─────────────────────────────
+# These teach the model to OFFER environment-changing tools first, then fire
+# only after the user agrees. Single-turn examples can't teach this flow.
+
+# Scenarios where offering music makes sense
+_MUSIC_SCENARIOS = [
+    "I have to clean the kitchen but it's so boring I can't start",
+    "I need to fold all this laundry and I keep putting it off",
+    "I should clean the apartment but I have zero motivation",
+    "I need to do the dishes but I keep avoiding them",
+    "I have to sort through three months of mail and it's so mind-numbing",
+    "I need to work on this spreadsheet at work and my brain is refusing",
+    "I have to do data entry for work and I'd rather do literally anything else",
+    "I need to put away all these groceries but I just got home and I'm wiped",
+    "I should start my homework but I can't focus and everything feels flat",
+    "I need to clean the bathroom but it's the most boring task on earth",
+]
+
+# Scenarios where offering bright lights makes sense
+_BRIGHTEN_SCENARIOS = [
+    "I just woke up and I can't get going. I've been sitting here for 20 minutes",
+    "I need to switch from scrolling to actually doing something",
+    "I've been sitting in the dark for like an hour and I know I should move",
+    "I woke up from a nap and I feel like garbage. I have stuff to do",
+    "I'm on the couch in the dark and I need to start cooking dinner",
+    "I can't wake up. I've been staring at my phone in bed for 30 minutes",
+    "I need to transition from couch mode to getting ready to go out",
+    "I feel so sluggish. I know I need to get moving but my brain won't activate",
+    "I've been lying here for an hour scrolling and I know I need to get up",
+    "My energy is at like 10% but I still have stuff I need to do",
+]
+
+# Scenarios where offering dim lights makes sense
+_DIM_SCENARIOS = [
+    "It's 1am and I'm still watching videos. I have work at 8",
+    "I know I should go to bed but I can't make myself stop scrolling",
+    "I keep saying 'one more episode' and it's been three hours",
+    "I'm not even enjoying what I'm watching anymore but I can't stop",
+    "It's 11pm and I should really go to bed but I can't wind down",
+    "I should go to bed but I still haven't replied to my friend's text",
+    "I can't stop scrolling. It's almost midnight and I have a morning class",
+    "I've been up way too late and I know tomorrow is going to suck",
+    "My brain gets more active at night and I can't wind it down",
+    "I should go to bed but I just started a new game",
+]
+
+# Offers (turn 1: suggest tool, NO action JSON)
+_MUSIC_OFFERS = [
+    "Want me to put on some music? Makes boring stuff way easier.",
+    "Want some music on? Might help your brain get through it.",
+    "This sounds like a music-and-go situation. Want me to start something?",
+    "Want a soundtrack for this? Boring tasks go way faster with music.",
+    "Want me to put something on? Music makes the monotony easier.",
+]
+
+_BRIGHTEN_OFFERS = [
+    "Want me to brighten the lights? Might help you wake up.",
+    "Want the lights up? Sometimes that's enough to shift gears.",
+    "Want me to turn the lights up? Bright light helps your brain activate.",
+    "You've been in the dark a while. Want me to bring the lights up?",
+    "Want me to brighten things up? It signals your brain that it's go time.",
+]
+
+_DIM_OFFERS = [
+    "Want me to dim the lights? Might help your brain start winding down.",
+    "Want me to bring the lights down? Doesn't mean you have to sleep yet.",
+    "Want the lights softer? It's a cue to your brain that the day is ending.",
+    "Want me to dim things? You can keep watching, just from a darker room.",
+    "Want me to lower the lights? Sometimes that's enough to start the wind-down.",
+]
+
+# Directives paired with the action (turn 3: after user says yes)
+# These are PREFIXES only. The contextual follow-up is built per-scenario.
+_MUSIC_CONFIRMATIONS = [
+    "Music's on.",
+    "Playing now.",
+    "Music's going.",
+    "Got it, music's on.",
+]
+
+_BRIGHTEN_CONFIRMATIONS = [
+    "Lights are up.",
+    "Lights up.",
+    "Done, lights are bright.",
+]
+
+_DIM_CONFIRMATIONS = [
+    "Lights are down.",
+    "Dimmed.",
+    "Lights are soft.",
+    "Done, lights are low.",
+]
+
+# User consent responses (variety of "yes")
+_CONSENT_RESPONSES = [
+    "yeah", "sure", "ok", "yes", "yeah go ahead", "sure why not",
+    "okay", "yes please", "yeah that might help", "go for it",
+    "yeah do it", "sure, that sounds good", "ok yeah",
+]
+
+
+def generate_consent_examples(seed: int = 42) -> list[dict]:
+    """Generate multi-turn training examples for environment-changing tools.
+
+    These teach the model the correct pattern:
+    1. User describes a situation
+    2. Model gives a directive + OFFERS music/lights (no action JSON)
+    3. User says yes
+    4. Model fires the action with a follow-up directive
+
+    This is the ONLY way play_music, brighten_lights, and dim_lights
+    appear in the training data.
+    """
+    rng = random.Random(seed)
+    examples = []
+
+    tool_configs = [
+        (_MUSIC_SCENARIOS, _MUSIC_OFFERS, _MUSIC_CONFIRMATIONS, "play_music"),
+        (_BRIGHTEN_SCENARIOS, _BRIGHTEN_OFFERS, _BRIGHTEN_CONFIRMATIONS, "brighten_lights"),
+        (_DIM_SCENARIOS, _DIM_OFFERS, _DIM_CONFIRMATIONS, "dim_lights"),
+    ]
+
+    for scenarios, offers, confirmations, tool_name in tool_configs:
+        action_json = f'{{"action": "{tool_name}"}}'
+
+        for scenario in scenarios:
+            offer = rng.choice(offers)
+            consent = rng.choice(_CONSENT_RESPONSES)
+            confirmation = rng.choice(confirmations)
+
+            # Build contextual directives that match the scenario
+            initial_directive = _build_initial_directive(scenario, rng)
+            followup_directive = _build_followup_directive(scenario, tool_name, rng)
+
+            examples.append({
+                "messages": [
+                    {"role": "user", "content": scenario},
+                    {"role": "assistant", "content": f"{initial_directive} {offer}"},
+                    {"role": "user", "content": consent},
+                    {"role": "assistant", "content": f"{confirmation} {followup_directive}\n{action_json}"},
+                ],
+                "metadata": {
+                    "technique_ids": [f"consent_{tool_name}"],
+                    "category": "environment_consent",
+                    "source": "consent_flow_template",
+                    "quality": "positive",
+                    "generation_method": "consent_template",
+                    "voice": "direct",
+                    "tool": tool_name,
+                },
+            })
+
+    rng.shuffle(examples)
+    return examples
+
+
+def _build_initial_directive(scenario: str, rng: random.Random) -> str:
+    """Build a short initial directive matching the scenario context."""
+    low = scenario.lower()
+
+    if any(w in low for w in ["dishes", "kitchen", "counter"]):
+        return rng.choice([
+            "Start with one dish. Just one.",
+            "Grab the sponge and do one dish.",
+            "Clear the counter first. One surface.",
+        ])
+    elif any(w in low for w in ["laundry", "fold"]):
+        return rng.choice([
+            "Grab one shirt and fold it. That's the start.",
+            "Just throw a load in. Don't fold, don't sort.",
+            "Start with one pile. You can stop after that.",
+        ])
+    elif any(w in low for w in ["clean", "apartment", "mess", "bathroom"]):
+        return rng.choice([
+            "Grab a trash bag and do one lap.",
+            "Pick up the first thing you see and put it away.",
+            "Start with one surface. Forget the rest.",
+        ])
+    elif any(w in low for w in ["bed", "sleep", "scrolling", "midnight", "1am", "11pm", "watching", "episode", "game"]):
+        return rng.choice([
+            "Pick your stopping point. One more, then done.",
+            "Put the phone face-down. Just that.",
+            "Change into PJs. You don't have to sleep yet.",
+        ])
+    elif any(w in low for w in ["woke up", "nap", "morning", "sluggish", "can't wake", "lying here"]):
+        return rng.choice([
+            "Stand up. That's step one.",
+            "Feet on the floor. That's all for now.",
+            "Sit up and put your feet on the ground.",
+        ])
+    elif any(w in low for w in ["homework", "work", "spreadsheet", "data entry", "email"]):
+        return rng.choice([
+            "Open it. Just open it, nothing else yet.",
+            "Type one line. Make it bad on purpose.",
+            "Open the file and look at it for 10 seconds.",
+        ])
+    elif any(w in low for w in ["mail", "sort"]):
+        return rng.choice([
+            "Grab the pile. Toss the obvious junk first.",
+            "Pull out three pieces and deal with just those.",
+        ])
+    else:
+        return rng.choice([
+            "Start with the smallest piece.",
+            "Do the first thing that comes to mind.",
+            "Pick one thing. Just one.",
+        ])
+
+
+def _build_followup_directive(scenario: str, tool: str, rng: random.Random) -> str:
+    """Build a contextual follow-up directive for after the user consents to a tool."""
+    low = scenario.lower()
+
+    if tool == "dim_lights":
+        # Bedtime/wind-down context
+        if any(w in low for w in ["episode", "watching", "show", "game"]):
+            return rng.choice([
+                "Finish this one, then move to bed.",
+                "Pick your stopping point and stick to it.",
+                "One more, then you're done for the night.",
+            ])
+        elif any(w in low for w in ["scrolling", "phone", "videos"]):
+            return rng.choice([
+                "Put the phone face-down. You're done scrolling.",
+                "Phone on the charger, face-down. That's the move.",
+                "Set the phone down. Your brain will follow.",
+            ])
+        else:
+            return rng.choice([
+                "Change into PJs. That's your one thing.",
+                "You don't have to sleep yet. Just move to the bedroom.",
+                "Start your wind-down. Brush your teeth, that's it.",
+            ])
+
+    elif tool == "brighten_lights":
+        # Wake-up/activation context
+        if any(w in low for w in ["woke up", "nap", "morning", "can't wake", "lying"]):
+            return rng.choice([
+                "Stand up. That's your first step.",
+                "Splash some water on your face.",
+                "Feet on the floor, then stretch for 5 seconds.",
+            ])
+        elif any(w in low for w in ["couch", "sitting", "scrolling", "dark"]):
+            return rng.choice([
+                "Stand up. Walk to the nearest thing that needs doing.",
+                "Now stand up. That's the hard part.",
+                "Get up and go stand where the task is.",
+            ])
+        else:
+            return rng.choice([
+                "Now get moving. One thing at a time.",
+                "Stand up and start with whatever's closest.",
+                "Let your body catch up. Start small.",
+            ])
+
+    else:  # play_music
+        if any(w in low for w in ["dishes", "kitchen", "counter"]):
+            return rng.choice([
+                "Grab the sponge and start with one dish.",
+                "Start with the counter. One surface.",
+                "One dish at a time. You can stop whenever.",
+            ])
+        elif any(w in low for w in ["laundry", "fold"]):
+            return rng.choice([
+                "Grab the first thing on the pile and fold it.",
+                "Start folding. You can stop after 5 minutes.",
+                "One pile at a time. Don't think about the rest.",
+            ])
+        elif any(w in low for w in ["homework", "work", "spreadsheet", "data entry"]):
+            return rng.choice([
+                "Now open it and type the first thing.",
+                "Start where you left off. Just one line.",
+                "Get into it. One row, one line, one thing.",
+            ])
+        elif any(w in low for w in ["clean", "apartment", "mess", "bathroom"]):
+            return rng.choice([
+                "Grab the first thing you see and deal with it.",
+                "One lap with a trash bag. That's it.",
+                "Pick up one thing. Put it where it goes.",
+            ])
+        elif any(w in low for w in ["groceries"]):
+            return rng.choice([
+                "Start with the cold stuff. Fridge first.",
+                "Grab one bag and empty it. Then the next.",
+            ])
+        elif any(w in low for w in ["mail", "sort"]):
+            return rng.choice([
+                "Toss the junk first. Stack the rest.",
+                "Three pieces at a time. Junk, keep, deal with later.",
+            ])
+        else:
+            return rng.choice([
+                "Now get started. One thing at a time.",
+                "Let's go. Start with the first thing.",
+                "Pick it up where you left off.",
+            ])
+
+
 def generate_llm_prompt_for_technique(
     tech: TechniqueAtom,
     count: int = 10,
@@ -382,13 +680,13 @@ Category: {tech.category}
 
 ## Instructions
 Generate {count} unique training conversations. Each must:
-1. Have a natural, diverse user message (frustrated, flat, anxious, scattered, self-blaming — vary the tone)
+1. Have a natural, diverse user message (frustrated, flat, anxious, scattered, self-blaming. Vary the tone)
 2. Have an assistant response that DEMONSTRABLY uses the "{tech.name}" technique
 3. Be 2-4 sentences for the assistant response (will be spoken via TTS)
 4. Sound natural and conversational (no jargon, no theory names)
-5. Be a different scenario each time — cover the full range of situations
+5. Be a different scenario each time. Cover the full range of situations
 
-Also generate 3 NEGATIVE examples showing what NOT to say — mark these with "quality": "negative".
+Also generate 3 NEGATIVE examples showing what NOT to say. Mark these with "quality": "negative".
 
 Output as a JSON array. Each object has:
 - "messages": [{{"role": "user", "content": "..."}}, {{"role": "assistant", "content": "..."}}]
@@ -457,7 +755,7 @@ def _fill_template(pattern: str, scenario: str, tech: TechniqueAtom) -> str:
     """Fill simple template variables in a pattern."""
     result = pattern
 
-    # Generic fills — these are approximate, meant for template mode.
+    # Generic fills. These are approximate, meant for template mode.
     # Cloud LLM mode produces much more natural responses.
     fills = {
         "{option_a}": "the dishes",
@@ -496,7 +794,7 @@ def _maybe_append_action(
     trigger actions like setting timers, playing music, or dimming lights.
     The action JSON is appended as a separate line after the spoken text.
 
-    Not every response should have an action — only when the technique
+    Not every response should have an action. Only when the technique
     naturally leads to one and the scenario makes sense for the action.
     """
     if not tech.actions or rng.random() > action_probability:
@@ -550,7 +848,7 @@ def _filter_actions_for_scenario(
     quick restart" or guilt-insomnia + "last episode timer".
     """
     if not scenario:
-        return actions  # No scenario context — allow all (overheard voice etc.)
+        return actions  # No scenario context, allow all (overheard voice etc.)
 
     low = scenario.lower()
     viable = []
@@ -601,7 +899,7 @@ def _deadline_too_tight(scenario_lower: str) -> bool:
 
 def _extract_task(scenario: str) -> str:
     """Extract a rough task description from a user scenario."""
-    # Simple heuristic — pull the verb phrase after "need to" / "should" / "have to"
+    # Simple heuristic: pull the verb phrase after "need to" / "should" / "have to"
     for trigger in ["need to ", "should ", "have to ", "gotta ", "want to "]:
         if trigger in scenario.lower():
             idx = scenario.lower().index(trigger) + len(trigger)
