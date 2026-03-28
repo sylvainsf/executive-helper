@@ -94,6 +94,10 @@ Per-Room Node                              Central Server (GPU)
 
 ## Installation
 
+> **Running on Ubuntu?** See the [Ubuntu Server Setup Guide](docs/ubuntu.md) for a complete containerized deployment (Docker Compose with Home Assistant, Ollama, and Executive Helper in one stack).
+
+The instructions below cover a manual setup where you install each component individually. This is suitable if you already have Home Assistant running or want more control over the setup.
+
 ### Step 1: Set Up Home Assistant + Home LLM
 
 If you already have HA running, skip to installing Home LLM.
