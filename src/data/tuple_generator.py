@@ -103,6 +103,9 @@ SAME_NICHE = [
     {"sdt_competence_micro", "sdt_competence_celebrate"},  # celebrate is the follow-up to micro
     {"ef_transition", "ef_bedtime"},                        # bedtime IS a transition
     {"ef_self_monitor", "ef_post_success"},                # post_success IS self-monitoring
+    {"ef_energy_budget", "ef_energy"},                      # energy_budget specializes energy
+    {"ef_cognitive_offload", "ef_working_memory"},          # both about externalization
+    {"ef_implementation_intention", "auto_nudge"},           # impl intentions create cues; nudge IS a cue
 ]
 
 # auto_nudge has a unique format (system-triggered, not user speech). Only
@@ -110,6 +113,7 @@ SAME_NICHE = [
 AUTO_NUDGE_COMPATIBLE = {
     "sdt_competence_micro", "sdt_autonomy_choice", "ef_energy",
     "sdt_relatedness_body_double", "emotion_integrative",
+    "ef_goal_decomposition", "ef_energy_budget",
 }
 
 
@@ -767,12 +771,12 @@ def _fill_template(pattern: str, scenario: str, tech: TechniqueAtom) -> str:
         "{small_thing}": "that thing you just did",
         "{room}": "kitchen",
         "{app/drawer/door}": "the app",
-        "{step1}": "the first thing",
-        "{step2}": "the next one",
         "{thing}": "that approach",
         "{time}": "30",
         "{n}": "three",
         "{tiny_step}": "just walking over there",
+        "{project}": _extract_task(scenario),
+        "{first_step}": "open it up and look at it",
     }
 
     for key, value in fills.items():

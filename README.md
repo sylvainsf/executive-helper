@@ -12,6 +12,9 @@ It uses a fine-tuned EF coaching model connected to Home Assistant through a mul
 
 - **Detect when you're stuck** — if you say "I should start dinner" but no kitchen activity follows, it gently checks in after a configurable grace period
 - **Break tasks into micro-steps** — instead of "clean the kitchen," it offers "can you pick up one thing near you right now?"
+- **Track projects and goals** — when something feels too big, it helps you break it into pieces, tracks progress locally, and checks in periodically without shame or pressure
+- **Be your external brain** — offloads "remember to do X" from working memory into the system so you can focus on doing, not remembering
+- **Budget energy, not just time** — on low-capacity days, it suggests minimum-viable versions of tasks instead of pushing you to do the full version
 - **Manage routines with compassion** — medication reminders, bedtime routines, and meal prep nudges in a warm, non-judgmental tone grounded in Self-Determination Theory
 - **Use smart home tools** — the EF model can set timers, play music, adjust lights, and schedule reminders through Home Assistant to help you get unstuck
 - **Identify speakers** — distinguishes you from other household members so behavioral support is directed appropriately

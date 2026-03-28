@@ -139,6 +139,80 @@ paradox that CBT demands effortful coping — the very capacity impaired in ADHD
   for adults with ADHD." *BMC Psychiatry*, 22(1), 738.
   DOI: 10.1186/s12888-022-04356-6 | PMC: PMC9706966
 
+## Planning, Goal Management & Cognitive Offloading
+
+### Implementation Intentions
+The most replicated behavior change technique for closing the intention–action
+gap. "When situation X arises, I will do behavior Y" bypasses the need to
+decide *when* to start — the environmental cue triggers the action automatically.
+Particularly effective for people with EF deficits because it offloads the
+"decide when to start" problem from working memory to the environment.
+
+- Gollwitzer, P.M. (1999). "Implementation intentions: Strong effects of simple
+  plans." *American Psychologist*, 54(7), 493–503.
+  DOI: 10.1037/0003-066X.54.7.493
+
+- Gollwitzer, P.M. & Sheeran, P. (2006). "Implementation intentions and goal
+  achievement: A meta-analysis of effects and processes." *Advances in
+  Experimental Social Psychology*, 38, 69–119.
+  DOI: 10.1016/S0065-2601(06)38002-1
+
+### Goal Management Training (GMT)
+A structured rehabilitation approach for executive dysfunction. The core cycle
+is: STOP → DEFINE the main goal → LIST the steps → DO step 1 → CHECK (am I
+doing what I planned?). Originally developed for acquired brain injury,
+validated for ADHD and other EF conditions. Provides the theoretical backbone
+for project decomposition — helping the person name the overarching goal and
+explicitly list a few steps, then directing them to step 1 only.
+
+- Levine, B., Robertson, I.H., Clare, L. et al. (2000). "Rehabilitation of
+  executive functioning: An experimental–clinical validation of Goal Management
+  Training." *Journal of the International Neuropsychological Society*, 6(3),
+  299–312. DOI: 10.1017/S1355617700633052
+
+- Levine, B., Schweizer, T.A., O'Brien, C. et al. (2011). "Rehabilitation of
+  executive functioning in patients with frontal lobe brain damage with Goal
+  Management Training." *Frontiers in Human Neuroscience*, 5, 9.
+  DOI: 10.3389/fnhum.2011.00009 | PMC: PMC3043269
+
+- Krasny-Pacini, A., Chevignard, M., & Evans, J. (2014). "Goal Management
+  Training for rehabilitation of executive functions: a systematic review of
+  effectiveness in patients with acquired brain injury." *Disability and
+  Rehabilitation*, 36(2), 105–116. DOI: 10.3109/09638288.2013.777807
+
+### Cognitive Offloading
+People naturally offload memory and planning tasks to external systems (notes,
+alarms, physical arrangements). For people with EF deficits, this is not a
+crutch — it is an essential adaptation. Strategic offloading improves
+performance and frees working memory for the actual task. The theoretical
+foundation for encouraging users to let the system track their projects,
+reminders, and task sequences rather than holding them in their head.
+
+- Risko, E.F. & Gilbert, S.J. (2016). "Cognitive offloading." *Trends in
+  Cognitive Sciences*, 20(9), 676–688. DOI: 10.1016/j.tics.2016.07.002
+
+- Gilbert, S.J. (2015). "Strategic offloading of delayed intentions into the
+  external environment." *Quarterly Journal of Experimental Psychology*, 68(5),
+  971–992. DOI: 10.1080/17470218.2014.972963
+
+### Energy as a Finite Resource
+Energy and cognitive capacity are finite and variable. Some days a person has
+reserves for a full day of tasks; other days they have barely enough for basic
+self-care. This is not laziness — it is a real constraint that varies with
+sleep, stress, pain, and neurological state. The system should calibrate task
+suggestions to current capacity rather than assuming a fixed productivity level.
+
+- Miserandino, C. (2003). "The Spoon Theory." *ButYouDontLookSick.com*.
+  (Foundational patient-experience metaphor for energy as a finite resource in
+  chronic illness and disability communities.)
+
+- Hockey, G.R.J. (2013). *The Psychology of Fatigue: Work, Effort and Control.*
+  Cambridge University Press.
+
+- Baumeister, R.F. & Vohs, K.D. (2007). "Self-regulation, ego depletion, and
+  motivation." *Social and Personality Psychology Compass*, 1(1), 115–128.
+  DOI: 10.1111/j.1751-9004.2007.00001.x
+
 ## Emotion Regulation & Empathic Language
 
 ### Integrative Emotion Regulation (SDT-based)
@@ -247,6 +321,10 @@ Derived from SDT, therapeutic alliance research, and ADAPT qualitative findings:
 | Relatedness/body-doubling | SDT + coaching lit | "I'm here with you while you do this" |
 | Permission to rest | ADAPT framework | "Rest is part of the process, not a failure" |
 | Transition bridging | Barkley's EF model | "Take three breaths, then we'll start the next thing" |
+| Implementation intention binding | Gollwitzer (1999) | "When your show ends, stand up and do it. Show ends, you move." |
+| Goal decomposition | Levine et al. (2000) GMT | "That's too big. Give me the three biggest chunks. We'll do them one at a time." |
+| Cognitive offloading | Risko & Gilbert (2016) | "Tell me all of it. Get it out of your head. I'll track it." |
+| Energy-aware triage | Miserandino (2003); Hockey (2013) | "Low reserves. Do the 2-minute version of each thing instead of the full version of one." |
 
 ### Synthetic Data Generation
 Training data generation prompts use these evidence-based categories to ensure coverage:
@@ -260,3 +338,7 @@ Training data generation prompts use these evidence-based categories to ensure c
 8. **Competence building** — SDT competence need
 9. **Connection/relatedness** — SDT relatedness need
 10. **Identity/self-concept** — ADAPT/AIC development
+11. **Goal/project decomposition** — GMT (Levine et al., 2000)
+12. **Implementation intentions** — Gollwitzer (1999) when–then binding
+13. **Cognitive offloading** — Risko & Gilbert (2016) externalization
+14. **Energy budgeting** — capacity-aware triage and minimum-viable tasks

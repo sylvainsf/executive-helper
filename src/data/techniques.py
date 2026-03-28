@@ -402,7 +402,7 @@ EMOTION_IDENTITY_AFFIRM = TechniqueAtom(
     language_patterns=[
         "Not a willpower thing, it's a setup thing. Go stand where the task is. That's your on-ramp.",
         "Your brain needs a different start. Set a timer for 3 minutes and just begin. Stop when it rings.",
-        "Hard doesn't mean broken. Means you need a tinier first step. What takes under 60 seconds? Do that.",
+        "Hard doesn't mean broken. Means you need a tinier on-ramp. Walk to where the task is. Just walk there.",
         "Some brains need a running start. Put on music, stand up, and grab the closest thing to you.",
         "This isn't about trying harder. Try different: change rooms, add music, shrink the task to one step.",
     ],
@@ -594,7 +594,7 @@ EF_WORKING_MEMORY = TechniqueAtom(
         "Say the steps out loud right now. Hearing them locks them in.",
         "Three things. Just three. Forget everything else on the list.",
         "Grab a sticky note and write it down. Get it out of your head and onto paper.",
-        "Just do {step1}. That's the only thing that matters right now. We'll deal with {step2} after.",
+        "Don't try to hold it all in your head. Just do {task} right now. Come back and tell me when it's done.",
         "Don't try to hold it all in your head. Just do the first thing, then come back for the next.",
     ],
     anti_patterns=[
@@ -891,7 +891,7 @@ ROUTINE_REPAIR = TechniqueAtom(
         "Streaks are overrated. Just do the thing today. Yesterday doesn't matter.",
         "Don't rebuild the whole routine. Just do one piece of it right now. That's a patch, and patches work.",
         "You didn't lose the progress. Just do the easiest part of the routine today. That gets the wheel turning.",
-        "Missing a few days didn't erase anything. Pick it back up right now. The smallest version is fine.",
+        "Missing a few days didn't erase anything. Pick it back up right now. Do the tiniest piece of it today.",
     ],
     anti_patterns=[
         "Well, you broke the streak, might as well start over",
@@ -942,7 +942,7 @@ DECISION_FATIGUE_REDUCE = TechniqueAtom(
         "I'll pick for you: do {option_a}. You can switch in 10 minutes if you want, but just start there.",
         "Flip a coin. Seriously, heads is {option_a}, tails is {option_b}. Random beats stuck every time.",
         "Do the first thing that pops into your head. It doesn't have to be the right one. Just go.",
-        "Just start with the smallest thing on the list. Default to easy. You can always switch.",
+        "Do {option_a}. That's it. If it's wrong you can switch in 10 minutes, but just go.",
         "Don't pick the right one. There isn't one. Pick any one. You can change your mind in 10 minutes.",
     ],
     anti_patterns=[
@@ -1040,10 +1040,10 @@ HELP_SEEKING_VALIDATE = TechniqueAtom(
     ],
     language_patterns=[
         "Alright, what's the task? Name it and I'll help you chop it up.",
-        "Good, you said something. What's the thing? I'll find you a first step.",
+        "Good, you said something. What's the thing? Name it and I'll chop it into one move.",
         "Welcome back. What are we tackling? Give me the task and I'll make it smaller.",
         "You're here. What's stuck? Name it and let's break it into pieces.",
-        "What's the task that's got you frozen? Say it out loud and I'll find the smallest piece.",
+        "What's the task that's got you frozen? Say it out loud and we'll figure out one thing you can do right now.",
     ],
     anti_patterns=[
         "You should be able to handle this yourself",
@@ -1070,6 +1070,218 @@ HELP_SEEKING_VALIDATE = TechniqueAtom(
     tags=["help_seeking", "validation", "relatedness", "shame", "connection"],
 )
 
+# ── Implementation Intentions ────────────────────────────────────────────────
+
+IMPLEMENTATION_INTENTION = TechniqueAtom(
+    id="ef_implementation_intention",
+    name="Implementation Intention Binding",
+    source="Gollwitzer (1999); Gollwitzer & Sheeran (2006)",
+    category="ef_working_memory",
+    description=(
+        "Help the person create a concrete when-then plan: bind a specific "
+        "situational cue to a specific action. This offloads the 'when do I start' "
+        "decision from working memory to the environment. More effective than "
+        "vague intentions ('I'll do it later') because the cue triggers the "
+        "action automatically."
+    ),
+    when_to_use=[
+        "User wants to do something but keeps forgetting or deferring",
+        "User has a recurring task they never start",
+        "User says 'I'll do it later' (vague intention)",
+        "User needs to attach a task to an existing routine or event",
+    ],
+    language_patterns=[
+        "When your show ends, stand up and do {task}. Just decide that right now. Show ends, you move.",
+        "After you finish eating, go straight to {task}. Don't sit back down. Eating is your cue.",
+        "When you get home, before you sit down, do {task}. Coat off, {task}, then sit. That's the deal.",
+        "Tomorrow when your alarm goes off, feet on the floor, then {task}. Alarm is your trigger.",
+        "When you open your laptop tomorrow, first tab is {task}. Before anything else. That's the rule.",
+    ],
+    anti_patterns=[
+        "Just remember to do it later",
+        "You'll find a good time for it",
+        "Do it whenever you feel ready",
+        "Try to fit it in at some point today",
+        "You should be able to remember this on your own",
+    ],
+    user_scenarios=[
+        "I keep saying I'll call the dentist but I never actually do it",
+        "I want to start taking my meds at the same time every day but I always forget",
+        "I need to reply to that email but I keep pushing it off",
+        "I want to exercise but I never actually start",
+        "Every day I say I'll clean the kitchen after dinner and every day I don't",
+        "I need to water my plants but I only remember when it's too late",
+        "I told myself I'd sort the mail when it arrives but it just piles up",
+        "I want to journal before bed but I always forget by the time I get there",
+        "I keep meaning to take the trash out but I walk right past it every morning",
+        "I need to stretch every day but there's never a 'right time' so I never do it",
+    ],
+    actions=[
+        '{"action": "set_reminder", "minutes": 30, "label": "cue for task"}',
+    ],
+    tags=["implementation_intention", "when_then", "cue_binding", "working_memory"],
+)
+
+# ── Goal / Project Decomposition ─────────────────────────────────────────────
+
+GOAL_DECOMPOSITION = TechniqueAtom(
+    id="ef_goal_decomposition",
+    name="Goal Decomposition (Stop-Define-List-Do)",
+    source="Levine et al. (2000, 2011) Goal Management Training; Brown (2005) Cluster 1",
+    category="sdt_competence",
+    description=(
+        "When a person faces an overwhelming project or multi-step goal, help "
+        "them pause, name what they're actually trying to accomplish, break it "
+        "into 3-5 concrete steps, then direct them to step 1 only. Keep the "
+        "other steps for later. This externalizes the plan and reduces the "
+        "cognitive load of holding the whole project in working memory."
+    ),
+    when_to_use=[
+        "User faces a large project or multi-day task",
+        "User says something feels 'too big' or 'overwhelming'",
+        "User doesn't know where to start on something complex",
+        "User has a goal but no plan",
+        "User keeps procrastinating on a big project",
+    ],
+    language_patterns=[
+        "That's a big one. Let's chop it up. What are the actual pieces? Name three and I'll track them.",
+        "Forget the whole project. What's the very first thing you need to do to get it moving? Just that.",
+        "Okay, {project}. Step one is {first_step}. Do that and come back. I'll remember the rest.",
+        "That's too big to do all at once. Give me the three biggest chunks and we'll tackle them one at a time.",
+        "You don't need to figure out the whole thing. What's one piece you could finish today? Start there.",
+    ],
+    anti_patterns=[
+        "Make a detailed plan for the whole project",
+        "You need to think about all the steps before you start",
+        "Create a timeline for each milestone",
+        "You should break this into a project management system",
+        "List every single thing you need to do",
+    ],
+    user_scenarios=[
+        "I need to do my taxes and I don't even know where to start",
+        "I have to move apartments in three weeks and it feels impossible",
+        "I need to apply for jobs but it's like this massive overwhelming thing",
+        "I want to meal prep for the week but it feels like so many steps",
+        "I have to plan a birthday party for my kid and I'm paralyzed",
+        "I need to organize my entire garage and it's been on my list for months",
+        "I have to write a 20-page thesis and I haven't started",
+        "I want to get my finances in order but there's credit cards, savings, budget, all of it",
+        "I need to renovate the bathroom but I don't know what comes first",
+        "I have to set up a new business and there are a million things to do",
+    ],
+    actions=[
+        '{"action": "set_timer", "minutes": 10, "label": "first chunk"}',
+        '{"action": "body_double_checkin", "minutes": 15}',
+    ],
+    tags=["goal", "decomposition", "project", "overwhelm", "planning"],
+)
+
+# ── Energy Budget / Capacity-Aware Triage ────────────────────────────────────
+
+ENERGY_BUDGET = TechniqueAtom(
+    id="ef_energy_budget",
+    name="Energy Budget / Capacity-Aware Triage",
+    source="Miserandino (2003); Hockey (2013); Brown (2005) Cluster 3",
+    category="ef_energy",
+    description=(
+        "Help the person triage tasks based on available energy rather than "
+        "importance or urgency. On low-capacity days, reduce scope of everything "
+        "rather than trying to do a full version of fewer things. A half-done "
+        "version of three things beats a perfect version of one followed by "
+        "collapse. Frame energy as a real finite resource, not a willpower problem."
+    ),
+    when_to_use=[
+        "User has multiple things to do but limited energy",
+        "User is having a low-capacity day but has obligations",
+        "User wants to know what to prioritize with low energy",
+        "User is trying to push through exhaustion",
+        "User asks what's realistic today",
+    ],
+    language_patterns=[
+        "Low reserves today. Do the 2-minute version of each thing instead of the full version of one. Quick and sloppy beats stuck.",
+        "You've got maybe three good hours in you. Pick the one thing that can't wait and do the ugly version. Skip the rest.",
+        "Don't do the full job on any of it. Do the minimum version of the top two. Rinse one dish. Send a two-word reply. Done.",
+        "Today's a survival day, not a productivity day. What absolutely has to happen? Just that. Everything else moves to tomorrow.",
+        "You're running low. Do the easiest thing first, get a quick win, then decide if you have anything left. No shame if you don't.",
+    ],
+    anti_patterns=[
+        "You should be able to get all of this done",
+        "Push through, you'll feel better after",
+        "That's not very much to do, you can handle it",
+        "Everyone has days like this but they still get through their list",
+        "You're using low energy as an excuse",
+    ],
+    user_scenarios=[
+        "I have work, cooking, and laundry to do and I barely have energy for one of them",
+        "It's a really rough day but I still have to feed my kids and do the dishes and walk the dog",
+        "I woke up and I can already tell today is going to be a low-energy day. I have a ton to do.",
+        "I have 4 hours of energy max today but 8 hours of stuff to do",
+        "I'm exhausted but I have to go to the store, do laundry, and cook. What do I skip?",
+        "I feel like I can barely function today but I can't just do nothing",
+        "I did one task this morning and I'm already wiped out. There's still so much.",
+        "I need to study, clean, and cook but I already know I can't do all three. What do I do?",
+        "I pushed hard yesterday and now I'm paying for it. But stuff still needs to happen.",
+        "I have just enough energy to do one big thing or three small things. How do I decide?",
+    ],
+    actions=[
+        '{"action": "set_reminder", "minutes": 60, "label": "energy check"}',
+        '{"action": "dismiss_intent"}',
+    ],
+    tags=["energy", "capacity", "triage", "low_function", "budget"],
+)
+
+# ── Cognitive Offloading ─────────────────────────────────────────────────────
+
+COGNITIVE_OFFLOAD = TechniqueAtom(
+    id="ef_cognitive_offload",
+    name="Cognitive Offloading / Externalization",
+    source="Risko & Gilbert (2016); Barkley (2012); Brown (2005) Cluster 5",
+    category="ef_working_memory",
+    description=(
+        "Actively encourage the person to get things out of their head and "
+        "into an external system: tell me, write it down, set a reminder. "
+        "Frame offloading as a smart strategy, not a failure to remember. "
+        "The brain is for having ideas, not holding them."
+    ),
+    when_to_use=[
+        "User is trying to hold too much in their head",
+        "User is anxious about forgetting something",
+        "User feels guilty about needing reminders",
+        "User has a bunch of things they need to track",
+        "User mentions being worried about forgetting",
+    ],
+    language_patterns=[
+        "Tell me all of it right now. Get it out of your head. I'll track it so you don't have to.",
+        "Stop trying to remember that. Tell me and I'll remind you. Your brain's for doing things, not storing them.",
+        "Dump everything on me. All the things you're holding in your head. I'll sort it, you do one at a time.",
+        "That's too many things to hold in your head. Pick the most important one. I'll remind you about the rest.",
+        "Say it out loud so you don't have to keep it in your head. I'm listening. I'll remind you when it matters.",
+    ],
+    anti_patterns=[
+        "You should be able to remember this",
+        "Just write it down like a normal person",
+        "If it's important enough you'll remember",
+        "You need to work on your memory",
+        "I shouldn't have to remind you about basic things",
+    ],
+    user_scenarios=[
+        "I have like 10 things I need to do and I keep forgetting half of them",
+        "I'm anxious because I know there's something I'm supposed to do but I can't remember what",
+        "I feel pathetic that I need reminders for everything. Adults should remember stuff.",
+        "I need to remember to bring the forms, take my meds, call my mom, and get gas. I'm going to forget something.",
+        "My brain is full. I can't hold any more tasks in there.",
+        "I keep losing track of what I was doing and what's next",
+        "I wrote myself a note and then forgot I wrote the note",
+        "I need to keep track of three different appointments this week and I know I'll mix them up",
+        "I just got off the phone and my boss gave me 5 things to follow up on and I already forgot two",
+        "I have a bunch of errands and I know if I don't do them in the right order I'll miss one",
+    ],
+    actions=[
+        '{"action": "set_reminder", "minutes": 15, "label": "next task"}',
+    ],
+    tags=["offloading", "externalize", "memory", "tracking", "anxiety"],
+)
+
 # ── All Techniques ───────────────────────────────────────────────────────────
 
 ALL_TECHNIQUES: list[TechniqueAtom] = [
@@ -1094,6 +1306,10 @@ ALL_TECHNIQUES: list[TechniqueAtom] = [
     DECISION_FATIGUE_REDUCE,
     BEDTIME_WIND_DOWN,
     HELP_SEEKING_VALIDATE,
+    IMPLEMENTATION_INTENTION,
+    GOAL_DECOMPOSITION,
+    ENERGY_BUDGET,
+    COGNITIVE_OFFLOAD,
 ]
 
 TECHNIQUES_BY_ID = {t.id: t for t in ALL_TECHNIQUES}
